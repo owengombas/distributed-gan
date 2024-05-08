@@ -36,7 +36,7 @@ args = parser.parse_args()
 def verify_imports(imports_options: Dict[str, Any], chosen: str) -> None:
     if chosen.lower() not in imports_options:
         raise ValueError(
-            f"Option {args.dataset} not available. Choose from {imports_options.keys()}"
+            f"Option \"{args.dataset}\" not available. Choose from {imports_options.keys()}"
         )
 
 
