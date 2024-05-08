@@ -17,26 +17,23 @@ import time
 from pathlib import Path
 from typing import Dict, Any
 import json
+from torchmetrics.image.inception import InceptionScore
 
+torch.manual_seed(0)
 mp.set_start_method("spawn", force=True)
 save_dir: Path = Path("saved_images")
 
 
 def compute_fid_score(
-    epoch: int,
     fake_images: torch.Tensor,
     real_images: torch.Tensor,
-    current_logs: Dict[str, Any],
-    file: Path,
     n_samples: int = torch.inf,
 ) -> float:
     # Compute Frechet Inception Distance
     fid = FrechetInceptionDistance(feature_dim=2048)
     # shuffle the images
     fake_images = fake_images[torch.randperm(len(fake_images))]
-    fake_images_fid: torch.Tensor = fake_images[
-        : min(n_samples, fake_images.shape[0])
-    ]
+    fake_images_fid: torch.Tensor = fake_images[: min(n_samples, fake_images.shape[0])]
     if fake_images_fid.shape[1] < 3:
         fake_images_fid = fake_images_fid.repeat(1, 3, 1, 1)
     # normalize the images to [0, 1]
@@ -45,9 +42,7 @@ def compute_fid_score(
     fid.update(fake_images_fid, is_real=False)
 
     # Pick len(all_images) from dataset
-    real_images_fid: torch.Tensor = real_images[
-        : min(n_samples, fake_images.shape[0])
-    ]
+    real_images_fid: torch.Tensor = real_images[: min(n_samples, fake_images.shape[0])]
     if real_images_fid.shape[1] < 3:
         real_images_fid = real_images_fid.repeat(1, 3, 1, 1)
     # normalize the images to [0, 1]
@@ -55,16 +50,38 @@ def compute_fid_score(
     logging.info(f"{real_images_fid.shape} real images")
     fid.update(real_images_fid, is_real=True)
 
-    logging.info(f"Server computing FID score")
     fid_score = fid.compute()
     logging.info(f"Server computed FID score: {fid_score}")
 
-    epoch_dict = current_logs[epoch]
-    epoch_dict["fid"] = fid_score.item()
-    epoch_dict["logging_time_end"] = time.time()
-    current_logs[epoch] = {**epoch_dict}
-    with open(file, "w") as f:
-        json.dump(current_logs.copy(), f)
+    return fid_score.item()
+
+
+def compute_inception_score(
+    generated_images: torch.Tensor,
+) -> float:
+    metric = InceptionScore()
+    metric.update(generated_images.to(dtype=torch.uint8))
+    result = metric.compute()
+    logging.info(f"Server computed Inception Score: {result}")
+    return result
+
+def split_dataset(dataset_size: int, world_size: int, iid: bool = False) -> List[torch.Tensor]:
+    """
+    Split the dataset into N parts, where N is the number of workers.
+    Each worker will get a different part of the dataset.
+    :param dataset_size: The size of the dataset
+    :param world_size: The number of workers
+    :param rank: The rank of the current worker
+    :param iid: Whether to shuffle the dataset before splitting
+    :return: A list of tensors, each tensor hold the indices of the dataset for each worker
+    """
+    if iid:
+        indices = torch.randperm(dataset_size, device=torch.device("cpu"))
+    else:
+        indices = torch.arange(dataset_size, device=torch.device("cpu"))
+    # Split the dataset into N parts
+    split_indices = torch.chunk(indices, world_size)
+    return split_indices
 
 
 def server(
@@ -82,15 +99,18 @@ def server(
     image_shape: Tuple[int, int, int],
     device: torch.device = torch.device("cpu"),
     n_samples_fid: int = 5,
+    iid: bool = True
 ):
     dist.init_process_group(
-        backend=backend, rank=rank, world_size=world_size, timeout=datetime.timedelta(weeks=52)
+        backend=backend,
+        rank=rank,
+        world_size=world_size,
+        timeout=datetime.timedelta(weeks=52),
     )
     logging.info(f"Server {rank} initialized")
 
     log_file: Path = log_folder / f"server_{rank}.logs.json"
-    manager = mp.Manager()
-    logs: Dict[str, Any] = manager.dict()
+    logs: Dict[str, Any] = {}
 
     generator.to(device, dtype=torch.float32)
 
@@ -102,9 +122,15 @@ def server(
     datasets: List[torch.Tensor] = [None] * N
     K = N
 
-    data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=2 * N * batch_size, shuffle=True
-    )
+
+    data_loader = torch.utils.data.DataLoader(dataset, batch_size=2 * N * batch_size, shuffle=True)
+    list_of_indices = split_dataset(len(dataset), world_size - 1, iid=iid)
+    logging.info(f"Server {rank} split the dataset into {len(list_of_indices)} parts")
+    for i, indices in enumerate(list_of_indices):
+        dist.send(tensor=torch.tensor(len(indices), device=torch.device("cpu"), dtype=torch.int), dst=i + 1, tag=4)
+        dist.send(tensor=indices, dst=i + 1, tag=4)
+        logging.info(f"Server {rank} sent indices to worker {i + 1} with shape {indices.shape}")
+
     generator.train()
     for epoch in range(epochs):
         start_time = time.time()
@@ -129,7 +155,9 @@ def server(
             X_n_images = X_n.to(device=device)
             X_g_images = X_g.to(device=device)
 
-            t = torch.zeros((2, batch_size, *image_shape), dtype=torch.float32, device=device)
+            t = torch.zeros(
+                (2, batch_size, *image_shape), dtype=torch.float32, device=device
+            )
             t[0] = X_n
             t[1] = X_g
 
@@ -138,8 +166,6 @@ def server(
             req = dist.isend(tensor=t.clone().cpu(), dst=rank, tag=1)
             reqs[rank - 1] = req
             logging.info(f"Server sent data to worker {rank}")
-        for req in reqs:
-            req.wait()
         logs[epoch] = {
             "sent_time": time.time(),
             **logs[epoch],
@@ -206,7 +232,7 @@ def server(
         if epoch % log_interval == 0 or epoch == epochs - 1:
             # create a process to compute the FID score
             fake_images[(rank - 1) * 2 * batch_size : rank * 2 * batch_size] = (
-                torch.cat((X_n_images, X_g_images), dim=0).cpu()
+                torch.cat((X_n_images, X_g_images), dim=0)
             )
 
             images = torch.cat((X_n_images, X_g_images), dim=0)
@@ -214,26 +240,31 @@ def server(
                 images, nrow=4, normalize=True, value_range=(-1, 1), padding=0
             )
             # Convert the grid to a PIL image
-            grid_pil = to_pil_image(grid.cpu())
+            grid_pil = to_pil_image(grid)
             # Create the save directory if it doesn't exist
             Path(save_dir).mkdir(parents=True, exist_ok=True)
             grid_path = (
                 Path(save_dir) / f"generated_epoch_{epoch}_for_worker_{rank}.png"
             )
             grid_pil.save(grid_path)
-
-            p = mp.Process(
-                target=compute_fid_score,
-                args=(
-                    epoch,
-                    fake_images.detach(),
-                    real_images.detach(),
-                    logs,
-                    log_file,
-                    n_samples_fid,
-                ),
+            logs[epoch]["fid_calculation_time_start"] = time.time()
+            fid_score = compute_fid_score(
+                fake_images,
+                real_images,
+                n_samples_fid,
             )
-            p.start()
+            logs[epoch]["fid_score"] = fid_score
+            logs[epoch]["fid_calculation_time_end"] = time.time()
+
+            # logs[epoch]["is_calculation_time_start"] = time.time()
+            # is_score = compute_inception_score(fake_images)
+            # logs[epoch]["inception_score"] = is_score
+            # logs[epoch]["is_calculation_time_end"] = time.time()
+
+            logs[epoch]["logging_time_end"] = time.time()
+        with open(log_file, "w") as f:
+            print(logs)
+            json.dump(logs, f)
 
     # Save the generator model
     save_path = Path("saved_models") / "generator.pt"

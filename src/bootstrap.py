@@ -31,6 +31,7 @@ parser.add_argument("--discriminator_lr", type=float, default=0.004)
 parser.add_argument("--device", type=str, default="cpu")
 parser.add_argument("--master_addr", type=str, default="localhost")
 parser.add_argument("--master_port", type=str, default="1234")
+parser.add_argument("--iid", type=int, default=1)
 args = parser.parse_args()
 
 def verify_imports(imports_options: Dict[str, Any], chosen: str) -> None:
@@ -60,7 +61,7 @@ if __name__ == "__main__":
     from dataloaders.MnistPartitioner import MnistPartitioner, mnist_shape
 
     available_datasets: Dict[str, Tuple[DataPartitioner, int]] = {
-        "cifar10": (Cifar10Partitioner, cifar10_shape),
+        "cifar": (Cifar10Partitioner, cifar10_shape),
         "mnist": (MnistPartitioner, mnist_shape),
     }
     verify_imports(available_datasets, args.dataset)
@@ -128,4 +129,5 @@ if __name__ == "__main__":
             z_dim=z_dim,
             log_interval=args.log_interval,
             log_folder=log_folder,
+            iid=args.iid==1
         )

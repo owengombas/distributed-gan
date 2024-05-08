@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import List, Tuple
 import torch.utils.data
 
 
@@ -13,6 +13,12 @@ class DataPartitioner:
     def __init__(self, world_size: int, rank: int):
         """
         Initialize the data partitioner, we need to know the world size and rank of the worker
+        """
+        raise NotImplementedError
+    
+    def get_subset_from_indices(self, indices: List[int], train: bool = True) -> torch.utils.data.Subset:
+        """
+        Get a subset of the data from a list of indices
         """
         raise NotImplementedError
 

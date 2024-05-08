@@ -32,6 +32,11 @@ class Cifar10Partitioner(DataPartitioner):
         )
         self.cifar10_train = CIFAR10(root=self.path, download=True, transform=transform)
         self.cifar10_test = CIFAR10(root=self.path, train=False, download=True, transform=transform)
+    
+    def get_subset_from_indices(self, indices: List[int], train: bool = True) -> torch.utils.data.Subset:
+        if train:
+            return torch.utils.data.Subset(self.cifar10_train, indices)
+        return torch.utils.data.Subset(self.cifar10_test, indices)
 
     def get_train_partition(
         self, partition_id: int

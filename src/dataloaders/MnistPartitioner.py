@@ -22,6 +22,11 @@ class MnistPartitioner(DataPartitioner):
         self.mnist_test = None
         self.path = path
 
+    def get_subset_from_indices(self, indices: List[int], train: bool = True) -> torch.utils.data.Subset:
+        if train:
+            return torch.utils.data.Subset(self.mnist_train, indices)
+        return torch.utils.data.Subset(self.mnist_test, indices)
+    
     def load_data(self):
         transform = transforms.Compose(
             [

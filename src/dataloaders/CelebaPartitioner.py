@@ -30,6 +30,10 @@ class CelebaPartitioner(DataPartitioner):
         self.celeba_train = CelebA(root=self.path, download=True, transform=transform)
         self.celeba_test = CelebA(root=self.path, split="test", download=True, transform=transform)
 
+    def get_subset_from_indices(self, indices: List[int], train: bool = True) -> torch.utils.data.Subset:
+        if train:
+            return torch.utils.data.Subset(self.celeba_train, indices)
+        return torch.utils.data.Subset(self.celeba_test, indices)
 
     def get_train_partition(
         self, partition_id: int

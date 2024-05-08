@@ -28,7 +28,7 @@ def save_image_grid(
     z_dim: int,
     device="cpu",
     nrow=5,
-    n_images = 10,
+    n_images=10,
     save_dir="saved_images",
 ):
     """
@@ -52,7 +52,9 @@ def save_image_grid(
         generator.train()
 
     # Convert the batch of images into a grid
-    grid = make_grid(generated_images, normalize=True, nrow=nrow, value_range=(-1, 1), padding=0)
+    grid = make_grid(
+        generated_images, normalize=True, nrow=nrow, value_range=(-1, 1), padding=0
+    )
 
     # Convert the grid to a PIL image
     grid_pil = to_pil_image(grid.cpu())
@@ -109,8 +111,17 @@ def worker(
     device: torch.device = torch.device("cpu"),
     z_dim: int = 100,
 ) -> None:
-    print(f"Worker {rank} starting", os.environ.get("MASTER_ADDR"), os.environ.get("MASTER_PORT"))
-    dist.init_process_group(backend=backend, rank=rank, world_size=world_size, timeout=datetime.timedelta(weeks=52))
+    print(
+        f"Worker {rank} starting",
+        os.environ.get("MASTER_ADDR"),
+        os.environ.get("MASTER_PORT"),
+    )
+    dist.init_process_group(
+        backend=backend,
+        rank=rank,
+        world_size=world_size,
+        timeout=datetime.timedelta(weeks=52),
+    )
     logging.info(f"Worker {rank} initialized on device {device}")
 
     logs_file = log_folder / f"worker_{rank}.logs.json"
@@ -119,15 +130,22 @@ def worker(
     discriminator = discriminator.to(device)
     generator = generator.to(device)
 
-    partition_train, start_train_idx, end_train_idx = (
-        data_partitioner.get_train_partition(rank - 1)
-    )
+    indices_size = torch.zeros(1, dtype=torch.int, device=torch.device("cpu"))
+    dist.recv(tensor=indices_size, src=0, tag=4)
+    logging.info(f"Worker will store {indices_size.item()} entries")
+    indices = torch.arange(indices_size.item(), device=torch.device("cpu"))
+    logging.info(f"Worker {rank} waiting for indices with shape {indices.shape}")
+    dist.recv(tensor=indices, src=0, tag=4)
+
+    partition_train = data_partitioner.get_subset_from_indices(indices, train=True)
     logging.info(
-        f"Worker {rank} with length {len(partition_train)} from {start_train_idx} to {end_train_idx} out of {len(data_partitioner.train_dataset)}"
+        f"Worker {rank} with length {len(partition_train)} out of {len(data_partitioner.train_dataset)} ({indices})"
     )
 
     criterion = nn.BCEWithLogitsLoss()
-    optimizer_discriminator = torch.optim.Adam(discriminator.parameters(), lr=discriminator_lr)
+    optimizer_discriminator = torch.optim.Adam(
+        discriminator.parameters(), lr=discriminator_lr
+    )
     optimizer_generator = torch.optim.Adam(generator.parameters(), lr=generator_lr)
 
     other_workers_rank = list(range(1, world_size))
@@ -147,26 +165,28 @@ def worker(
         # Swap state_dict if needed with another worker
         if swap_status["rank"] != -1:
             swap_with = swap_status["rank"]
-            logging.info(
-                f"Worker {rank} swapping state_dict with worker {swap_with}"
-            )
+            logging.info(f"Worker {rank} swapping state_dict with worker {swap_with}")
             discriminator.load_state_dict(swap_status["state_dict"])
             discriminator = discriminator.to(device)
             swap_status["rank"] = -1
             swap_status["state_dict"] = None
-            logging.info(f"Worker {rank} finished swapping state_dict with worker {swap_with}")
+            logging.info(
+                f"Worker {rank} finished swapping state_dict with worker {swap_with}"
+            )
 
         # Get N random samples from the dataset
         random_indices = torch.randperm(len(partition_train))[:batch_size]
         real_images: torch.Tensor = torch.stack(
             [partition_train[i][0] for i in random_indices]
         ).to(device)
-        # grid = make_grid(real_images, nrow=4, normalize=True, value_range=(-1, 1), padding=0)
-        # grid_pil = to_pil_image(grid.cpu())
-        # grid_path = Path(f"saved_images_worker_{rank}")
-        # grid_path.mkdir(parents=True, exist_ok=True)
-        # grid_path = grid_path / f"real_epoch_{epoch}.png"
-        # grid_pil.save(grid_path)
+        grid = make_grid(
+            real_images, nrow=4, normalize=True, value_range=(-1, 1), padding=0
+        )
+        grid_pil = to_pil_image(grid.cpu())
+        grid_path = Path(f"saved_images_worker_{rank}")
+        grid_path.mkdir(parents=True, exist_ok=True)
+        grid_path = grid_path / f"real_epoch_{epoch}.png"
+        grid_pil.save(grid_path)
 
         # Receive fake images from the server
         X_gen = torch.zeros((2, batch_size, *image_shape), dtype=torch.float32)
@@ -211,34 +231,6 @@ def worker(
             g_loss.backward()
             optimizer_generator.step()
 
-            # optimizer_generator.zero_grad()
-            # label_real: torch.Tensor = torch.full(
-            #     (batch_size,), real_label, device=device, dtype=torch.float32
-            # )
-            # X_out: torch.Tensor = discriminator(real_images).view(-1)
-            # loss_real: torch.Tensor = criterion(X_out, label_real)
-
-            # # # calculate loss
-            # label_fake: torch.Tensor = torch.full(
-            #     (batch_size,), fake_label, device=device, dtype=torch.float32
-            # )
-            # X_out: torch.Tensor = discriminator(fake_images_d.detach()).view(-1)
-            # loss_gen: torch.Tensor = criterion(X_out, label_fake)
-            # total_loss = loss_real + loss_gen
-            # total_loss.backward()
-            # optimizer_discriminator.step()
-
-            # optimizer_generator.zero_grad()
-            # rand_t = torch.randn((batch_size, 100), device=device)
-            # G_out: torch.Tensor = generator(rand_t)
-            # D_out: torch.Tensor = discriminator(G_out).view(-1)
-            # label_g_real: torch.Tensor = torch.full(
-            #     (batch_size,), real_label, device=device, dtype=torch.float32
-            # )
-            # loss_g_real: torch.Tensor = criterion(D_out, label_g_real)
-            # loss_g_real.backward()
-            # optimizer_generator.step()
-
             if l % log_interval == 0 or l == local_epochs - 1:
                 end_time_local = time.time()
                 logs[epoch][l] = {
@@ -280,7 +272,9 @@ def worker(
         )
         # Compute gradients
         loss_gen.backward()
-        logging.info(f"Worker {rank} sending gradients to server with shape {fake_images_d.grad.shape}")
+        logging.info(
+            f"Worker {rank} sending gradients to server with shape {fake_images_d.grad.shape}"
+        )
         # Send the gradients to the server
         dist.send(tensor=fake_images_d.grad.clone().cpu(), dst=0, tag=3)
         logs[epoch]["end_time_send"] = time.time()

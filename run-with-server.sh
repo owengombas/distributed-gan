@@ -18,6 +18,7 @@ python bootstrap.py \
     --model $5 \
     --device $9 \
     --batch_size ${11} \
+    --iid ${16} \
     --master_addr $1 \
     --master_port $2 &
 
@@ -40,6 +41,7 @@ for i in $(seq 1 $((${15}))); do
         --model $7 \
         --device $9 \
         --batch_size ${11} \
+        --iid ${16} \
         --master_addr $1 \
         --master_port $2 &
 done
