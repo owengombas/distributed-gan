@@ -1,3 +1,11 @@
 __pycache__
 .DS_Store
 *.pdf
+.venv
+models
+saved_images
+saved_images_*
+logs
+data
+archive
+.vscode

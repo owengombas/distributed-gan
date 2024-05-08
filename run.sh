@@ -1,16 +1,1 @@
-#!/bin/bash
-set -e
-
-echo "Starting server"
-python src/server/server.py &
-sleep 3  # Sleep for 3s to give the server enough time to start
-
-for i in $(seq 0 1); do
-    echo "Starting client $i"
-    python src/client/client.py --partition-id "$i" &
-done
-
-# Enable CTRL+C to stop all background processes
-trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM
-# Wait for all background processes to complete
-wait
+./run-multiple.sh localhost 12345 5 mnist mnist 10000 mnist 3 cpu 1 10 0.004 0.001
