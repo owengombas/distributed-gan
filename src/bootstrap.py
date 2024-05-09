@@ -24,7 +24,7 @@ parser.add_argument("--swap_interval", type=int, default=2)
 parser.add_argument("--local_epochs", type=int, default=10)
 parser.add_argument("--model", type=str, default="cifar")
 parser.add_argument("--batch_size", type=int, default=32)
-parser.add_argument("--log_interval", type=int, default=10)
+parser.add_argument("--log_interval", type=int, default=50)
 parser.add_argument("--n_samples_fid", type=int, default=10)
 parser.add_argument("--generator_lr", type=float, default=0.001)
 parser.add_argument("--discriminator_lr", type=float, default=0.004)
@@ -47,6 +47,7 @@ if __name__ == "__main__":
     os.environ["WORLD_SIZE"] = str(args.world_size)
     os.environ["RANK"] = str(args.rank)
     os.environ["GLOO_SOCKET_IFNAME"] = "en0"
+    os.environ["USE_CUDA"] = "0"
     # os.environ['GLOO_LOG_LEVEL'] = 'DEBUG'
     # os.environ["TORCH_CPP_LOG_LEVEL"]="INFO"
     # os.environ[
