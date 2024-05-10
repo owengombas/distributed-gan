@@ -70,14 +70,14 @@ dataset: DataPartitioner = available_datasets[args.dataset][0](1, 0)
 dataset.load_data()
 dataloader = DataLoader(dataset.train_dataset, batch_size=args.batch_size, shuffle=True)
 
-netG = available_generators[args.model][0](image_shape, nz, device)
-netD = available_discriminators[args.model](image_shape, device)
+netG = available_generators[args.model][0](image_shape).to(device)
+netD = available_discriminators[args.model](image_shape).to(device)
 
 criterion = nn.BCELoss()
 
 # setup optimizer
-optimizerD = optim.Adam(netD.parameters(), lr=0.0002, betas=(0.5, 0.999))
-optimizerG = optim.Adam(netG.parameters(), lr=0.0002, betas=(0.5, 0.999))
+optimizerD = optim.Adam(netD.parameters(), lr=args.discriminator_lr, betas=(0.5, 0.999))
+optimizerG = optim.Adam(netG.parameters(), lr=args.generator_lr, betas=(0.5, 0.999))
 
 fixed_noise = torch.randn(args.batch_size, nz, 1, 1, device=device)
 real_label = 1
@@ -146,14 +146,18 @@ for epoch in range(niter):
             image_images = netG(fixed_noise)
             vutils.save_image(image_images.detach(), image_output_path/f"fake_samples_epoch_{epoch}.png", normalize=True)
         
-        if i % args.log_fid_is_interval == 0:
-            real_images = (real_images+1)*127.5
-            fake_images = (image_images+1)*127.5
-            real_images = real_images[:args.n_samples_fid].to(device="cpu", dtype=torch.uint8)
-            image_images = image_images[:args.n_samples_fid].to(device="cpu", dtype=torch.uint8)
-            fid_score = compute_fid_score(real_images, image_images, netG)
-            inception_score = compute_inception_score(image_images, netG)
-            print(f"Epoch {epoch}, Step {i}, FID {fid_score}, Inception Score {inception_score}")
+        # if i % args.log_fid_is_interval == 0:
+        #     real_images = (real_images+1)*127.5
+        #     fake_images = (image_images+1)*127.5
+        #     if fake_images.shape[1] < 3:
+        #         fake_images = fake_images.repeat(1, 3, 1, 1)
+        #     if real_images.shape[1] < 3:
+        #         real_images = real_images.repeat(1, 3, 1, 1)
+        #     real_images = real_images[:args.n_samples_fid].to(device="cpu", dtype=torch.uint8)
+        #     image_images = image_images[:args.n_samples_fid].to(device="cpu", dtype=torch.uint8)
+        #     fid_score = compute_fid_score(real_images, image_images, netG)
+        #     inception_score = compute_inception_score(image_images, netG)
+        #     print(f"Epoch {epoch}, Step {i}, FID {fid_score}, Inception Score {inception_score}")
     
     # Check pointing for every epoch
     torch.save(netG.state_dict(), weights_output_path/f"netG_epoch_{epoch}.pth")

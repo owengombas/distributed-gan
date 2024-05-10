@@ -201,7 +201,7 @@ def server(
         ]
         for rank in range(1, world_size):
             feedback = feedbacks[rank - 1]
-            X_g = X_ns[rank - 1]  # Assuming datasets is indexed starting from 0
+            X_g = X_gs[rank - 1]  # Assuming datasets is indexed starting from 0
             for x_i, e_i in zip(X_g, feedback):
                 # Compute gradients for each parameter based on the feedback
                 grads = torch.autograd.grad(

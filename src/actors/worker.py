@@ -146,7 +146,6 @@ def worker(
     optimizer_discriminator = torch.optim.Adam(
         discriminator.parameters(), lr=discriminator_lr
     )
-    optimizer_generator = torch.optim.Adam(generator.parameters(), lr=generator_lr)
 
     other_workers_rank = list(range(1, world_size))
     other_workers_rank.remove(rank)
@@ -192,12 +191,10 @@ def worker(
         X_gen = torch.zeros((2, batch_size, *image_shape), dtype=torch.float32)
         dist.recv(tensor=X_gen, src=0, tag=1)
         X_gen = X_gen.to(device)
-        fake_images_d = X_gen[0].to(device)
-        fake_images_g_server = X_gen[1].to(device).clone()
-        fake_images_g_local = X_gen[1].to(device).clone()
-        fake_images_d.requires_grad = True
-        fake_images_g_server.requires_grad = True
-        fake_images_g_local.requires_grad = True
+        X_n = X_gen[0]
+        X_g = X_gen[1]
+        X_n.requires_grad = True
+        X_g.requires_grad = True
         logging.info(f"Worker {rank} received data of shape {X_gen.shape}")
 
         generator.train()
@@ -215,7 +212,7 @@ def worker(
             d_loss_real: torch.Tensor = criterion(output, real_labels)
 
             # Train Discriminator with fake images
-            output = discriminator(fake_images_d.detach())
+            output = discriminator(X_n.detach())
             d_loss_fake: torch.Tensor = criterion(output, fake_labels)
             d_loss = d_loss_real + d_loss_fake
             d_loss.backward()
@@ -254,7 +251,7 @@ def worker(
 
         logs[epoch]["start_time_send"] = time.time()
         # Compute output of the discriminator for a given input
-        d_loss_eval: torch.Tensor = discriminator(fake_images_d)
+        d_loss_eval: torch.Tensor = discriminator(X_g)
         # Compute loss for fake data
         loss_gen: torch.Tensor = criterion(
             d_loss_eval,
@@ -263,10 +260,10 @@ def worker(
         # Compute gradients
         loss_gen.backward()
         logging.info(
-            f"Worker {rank} sending gradients to server with shape {fake_images_d.grad.shape}"
+            f"Worker {rank} sending gradients to server with shape {X_g.grad.shape}"
         )
         # Send the gradients to the server
-        dist.send(tensor=fake_images_d.grad.clone().cpu(), dst=0, tag=3)
+        dist.send(tensor=X_g.grad.clone().cpu(), dst=0, tag=3)
         logs[epoch]["end_time_send"] = time.time()
 
         if len(other_workers_rank) > 0:
