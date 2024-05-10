@@ -10,3 +10,4 @@ archive
 .vscode
 *.h.sh
 weights
+_build
