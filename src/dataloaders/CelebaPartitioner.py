@@ -7,6 +7,7 @@ import torchvision.transforms as transforms
 
 from dataloaders.DataPartitioner import DataPartitioner, _get_partition
 
+celeba_shape = (3, 64, 64)
 
 class CelebaPartitioner(DataPartitioner):
     """
@@ -25,10 +26,11 @@ class CelebaPartitioner(DataPartitioner):
             [
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                transforms.Resize((64, 64)),
             ]
         )
-        self.celeba_train = CelebA(root=self.path, download=True, transform=transform)
-        self.celeba_test = CelebA(root=self.path, split="test", download=True, transform=transform)
+        self.celeba_train = CelebA(root=self.path, download=False, transform=transform)
+        self.celeba_test = CelebA(root=self.path, split="test", download=False, transform=transform)
 
     def get_subset_from_indices(self, indices: List[int], train: bool = True) -> torch.utils.data.Subset:
         if train:

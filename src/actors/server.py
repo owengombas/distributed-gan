@@ -177,6 +177,7 @@ def server(
             (world_size - 1, batch_size, *image_shape),
             dtype=torch.float32,
             requires_grad=True,
+            device="cpu",
         )
         reqs = [None] * (world_size - 1)
         for rank in range(1, world_size):
@@ -213,7 +214,7 @@ def server(
                 # Update delta_w with the new gradients
                 for j, grad in enumerate(grads):
                     if grad is not None:
-                        delta_w[j].add_(grad, alpha=batch_size * N)
+                        delta_w[j].add_(grad, alpha=1.0 / (batch_size * N))
 
         # Apply the aggregated gradients to the generator
         optimizer.zero_grad()
@@ -233,7 +234,7 @@ def server(
 
         if epoch % log_interval == 0 or epoch == epochs - 1:
             # Generate some images
-            fake_images = torch.cat(X_gs, dim=0).to(device=device)
+            fake_images = torch.cat(X_gs, dim=0).to(device="cpu")
 
             grid = make_grid(
                 fake_images, nrow=4, normalize=True, value_range=(-1, 1), padding=0
@@ -243,7 +244,7 @@ def server(
             # Create the save directory if it doesn't exist
             Path(save_dir).mkdir(parents=True, exist_ok=True)
             grid_path = (
-                Path(save_dir) / f"generated_epoch_{epoch}_for_worker_{rank}.png"
+                Path(save_dir) / f"generated_epoch_{epoch}.png"
             )
             grid_pil.save(grid_path)
 
@@ -257,7 +258,7 @@ def server(
             real_images = ((real_images + 1) * 127.5).to(dtype=torch.uint8)
 
             logs[epoch]["is_calculation_time_start"] = time.time()
-            is_score = compute_inception_score(fake_images, n_samples, device=device)
+            is_score = compute_inception_score(fake_images, n_samples, device="cpu")
             logs[epoch]["inception_score"] = is_score
             logs[epoch]["is_calculation_time_end"] = time.time()
             logs[epoch]["fid_calculation_time_start"] = time.time()

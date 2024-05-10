@@ -20,11 +20,11 @@ parser.add_argument("--world_size", type=int, default=2)
 parser.add_argument("--dataset", type=str, default="CIFAR10")
 parser.add_argument("--rank", type=int, default=0)
 parser.add_argument("--epochs", type=int, default=10)
-parser.add_argument("--swap_interval", type=int, default=2)
+parser.add_argument("--swap_interval", type=int, default=1)
 parser.add_argument("--local_epochs", type=int, default=10)
 parser.add_argument("--model", type=str, default="cifar")
 parser.add_argument("--batch_size", type=int, default=32)
-parser.add_argument("--log_interval", type=int, default=50)
+parser.add_argument("--log_interval", type=int, default=10)
 parser.add_argument("--n_samples_fid", type=int, default=10)
 parser.add_argument("--generator_lr", type=float, default=0.001)
 parser.add_argument("--discriminator_lr", type=float, default=0.004)
@@ -60,10 +60,12 @@ if __name__ == "__main__":
 
     from dataloaders.Cifar10Partitioner import Cifar10Partitioner, cifar10_shape
     from dataloaders.MnistPartitioner import MnistPartitioner, mnist_shape
+    from dataloaders.CelebaPartitioner import CelebaPartitioner, celeba_shape
 
     available_datasets: Dict[str, Tuple[DataPartitioner, int]] = {
         "cifar": (Cifar10Partitioner, cifar10_shape),
         "mnist": (MnistPartitioner, mnist_shape),
+        "celeba": (CelebaPartitioner, celeba_shape),
     }
     verify_imports(available_datasets, args.dataset)
     dataset: DataPartitioner = available_datasets[args.dataset][0](args.world_size - 1, args.rank)
@@ -73,20 +75,24 @@ if __name__ == "__main__":
 
     from models.CifarDiscriminator import CifarDiscriminator
     from models.MnistDiscriminator import MnistDiscriminator
+    from models.CelebaDiscriminator import CelebaDiscriminator
 
     available_discriminators: Dict[str, torch.nn.Module] = {
         "cifar": CifarDiscriminator,
         "mnist": MnistDiscriminator,
+        "celeba": CelebaDiscriminator,
     }
     verify_imports(available_discriminators, args.model)
     discriminator: torch.nn.Module = available_discriminators[args.model]
 
     from models.CifarGenerator import CifarGenerator, cifar_z_dim
     from models.MnistGenerator import MnistGenerator, mnist_z_dim
+    from models.CelebaGenerator import CelebaGenerator, celeba_z_dim
 
     available_generators: Dict[str, torch.nn.Module] = {
         "cifar": (CifarGenerator, cifar_z_dim),
         "mnist": (MnistGenerator, mnist_z_dim),
+        "celeba": (CelebaGenerator, celeba_z_dim),
     }
     verify_imports(available_generators, args.model)
     generator: torch.nn.Module = available_generators[args.model][0]

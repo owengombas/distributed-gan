@@ -221,16 +221,6 @@ def worker(
             d_loss.backward()
             optimizer_discriminator.step()
 
-            # Train Generator
-            # Train Discriminator with fake images
-            noise = torch.randn(batch_size, z_dim, 1, 1, device=device)
-            fake_images = generator(noise)
-            generator.zero_grad()
-            output: torch.Tensor = discriminator(fake_images)
-            g_loss: torch.Tensor = criterion(output, real_labels)
-            g_loss.backward()
-            optimizer_generator.step()
-
             if l % log_interval == 0 or l == local_epochs - 1:
                 end_time_local = time.time()
                 logs[epoch][l] = {
@@ -246,7 +236,7 @@ def worker(
                     json.dump(logs, f)
 
             logging.info(
-                f"Worker {rank} finished local iteration {l}, discriminator loss {d_loss_real + d_loss_fake}, generator loss {g_loss}"
+                f"Worker {rank} finished local iteration {l}, discriminator loss {d_loss_real + d_loss_fake}"
             )
 
         logs[epoch]["elapsed_time"] = time.time() - start_time
@@ -280,7 +270,7 @@ def worker(
         logs[epoch]["end_time_send"] = time.time()
 
         if len(other_workers_rank) > 0:
-            if epoch % (len(partition_train) * swap_interval / batch_size) == 0:
+            if epoch % int(len(partition_train) * swap_interval / batch_size) == 0:
                 logs[epoch]["start_time_swap"] = time.time()
                 # pick a random worker to swap with
                 swap_with = np.random.choice(other_workers_rank)

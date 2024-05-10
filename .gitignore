@@ -9,3 +9,4 @@ data
 archive
 .vscode
 *.h.sh
+weights
