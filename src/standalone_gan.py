@@ -5,7 +5,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import torchvision.utils as vutils
+from torchvision.utils import make_grid, save_image
+from torchvision.transforms.functional import to_pil_image
 from pathlib import Path
 from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.inception import InceptionScore
@@ -123,14 +124,14 @@ logs = []
 def compute_fid_score(
     real_images: torch.Tensor, fake_images: torch.Tensor, netG: torch.nn.Module
 ) -> float:
-    fid = FrechetInceptionDistance(feature=2048)
+    fid = FrechetInceptionDistance(normalize=True)
     fid.update(real_images, real=True)
     fid.update(fake_images, real=False)
     return fid.compute()
 
 
 def compute_inception_score(fake_images: torch.Tensor, netG: torch.nn.Module) -> float:
-    inception = InceptionScore(feature=2048)
+    inception = InceptionScore(normalize=True, splits=1)
     inception.update(fake_images)
     return inception.compute()[0]
 
@@ -178,7 +179,7 @@ for epoch in range(epochs):
         current_logs = {
             "epoch": epoch,
             "step": i,
-            "absolut_step": epoch * len(dataloader) + i,
+            "absolut_step": epoch * local_epochs + i,
             "loss_d": errD.item(),
             "loss_g": errG.item(),
             "time_elapsed": end_time - start_time,
@@ -189,34 +190,21 @@ for epoch in range(epochs):
         # save the output
         if epoch % args.log_images_interval == 0:
             image_output_path.mkdir(parents=True, exist_ok=True)
-
-            vutils.save_image(
-                real_images,
-                image_output_path / f"real_samples_{epoch}.png",
-                normalize=True,
-            )
-            fake_images = netG(fixed_noise)
-            vutils.save_image(
-                fake_images.detach(),
-                image_output_path / f"fake_samples_epoch_{epoch}.png",
-                normalize=True,
-            )
+            grid = make_grid(fake_images, nrow=4, normalize=True, value_range=(-1, 1), padding=0)
+            grid_pil = to_pil_image(grid.cpu())
+            grid_pil.save(image_output_path / f"fake_samples_{epoch}.png")
 
         if epoch % args.log_fid_is_interval == 0:
-            real_images = (real_images + 1) * 127.5
-            fake_images = (fake_images + 1) * 127.5
+            real_images = (real_images + 1) * 0.5
+            fake_images = (fake_images + 1) * 0.5
 
             if fake_images.shape[1] < 3:
                 fake_images = fake_images.repeat(1, 3, 1, 1)
             if real_images.shape[1] < 3:
                 real_images = real_images.repeat(1, 3, 1, 1)
 
-            real_images = real_images[: args.n_samples_fid].to(
-                device="cpu", dtype=torch.uint8
-            )
-            fake_images = fake_images[: args.n_samples_fid].to(
-                device="cpu", dtype=torch.uint8
-            )
+            real_images = real_images[: args.n_samples_fid].to(device="cpu")
+            fake_images = fake_images[: args.n_samples_fid].to(device="cpu")
             fid_score = compute_fid_score(real_images, fake_images, netG).item()
             inception_score = compute_inception_score(fake_images, netG).item()
 

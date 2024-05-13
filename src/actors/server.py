@@ -31,7 +31,7 @@ def compute_fid_score(fake_images: torch.Tensor, real_images: torch.Tensor) -> f
 
 def compute_inception_score(generated_images: torch.Tensor,) -> float:
     logging.info(f"Computing Inception score")
-    metric = InceptionScore(normalize=True)
+    metric = InceptionScore(normalize=True, splits=1)
     metric.update(generated_images)
     scores = InceptionScore.compute(metric)
     mean_score = scores[0].item()
@@ -247,7 +247,7 @@ def server(
             logging.info(f"Server {fake_images.shape} generated images")
 
             grid_fake = make_grid(
-                fake_images, nrow=4, normalize=True, value_range=(0, 1), padding=0
+                fake_images, nrow=4, value_range=(0, 1), padding=0
             )
             # Convert the grid to a PIL image
             grid_pil = to_pil_image(grid_fake)

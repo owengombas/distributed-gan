@@ -9,8 +9,6 @@ import torch.nn as nn
 import random
 import numpy as np
 
-SEED = 42
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 parser = argparse.ArgumentParser()
@@ -33,6 +31,7 @@ parser.add_argument("--device", type=str, default="cpu")
 parser.add_argument("--master_addr", type=str, default="localhost")
 parser.add_argument("--master_port", type=str, default="1234")
 parser.add_argument("--iid", type=int, default=1)
+parser.add_argument("--seed", type=int, default=1)
 args = parser.parse_args()
 
 def verify_imports(imports_options: Dict[str, Any], chosen: str) -> None:
@@ -110,7 +109,7 @@ if __name__ == "__main__":
     from actors.server import server
     from actors.worker import worker
 
-    seed_shifted = SEED + args.rank
+    seed_shifted = args.seed + args.rank
     np.random.seed(seed_shifted)
     random.seed(seed_shifted)
     torch.manual_seed(seed_shifted)
