@@ -9,6 +9,8 @@ import torch.nn as nn
 import random
 import numpy as np
 
+SEED = 42
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 parser = argparse.ArgumentParser()
@@ -108,12 +110,13 @@ if __name__ == "__main__":
     from actors.server import server
     from actors.worker import worker
 
-    np.random.seed(args.rank)
-    random.seed(args.rank)
-    torch.manual_seed(args.rank)
-    torch.mps.manual_seed(args.rank)
-    torch.cuda.manual_seed(args.rank)
-    torch.cuda.manual_seed_all(args.rank)
+    seed_shifted = SEED + args.rank
+    np.random.seed(seed_shifted)
+    random.seed(seed_shifted)
+    torch.manual_seed(seed_shifted)
+    torch.mps.manual_seed(seed_shifted)
+    torch.cuda.manual_seed(seed_shifted)
+    torch.cuda.manual_seed_all(seed_shifted)
     torch.backends.cudnn.deterministic = True
 
     # If the rank is greater than 0, we are a worker
