@@ -3,6 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from dataloaders.CelebaPartitioner import celeba_shape
 from typing import Tuple
+import os
+import random
+import numpy as np
 
 celeba_z_dim = 100
 ngf = 64
@@ -10,7 +13,7 @@ ngf = 64
 
 # https://github.com/AKASHKADEL/dcgan-celeba/blob/master/networks.py
 class CelebaGenerator(nn.Module):
-    def __init__(self, image_shape: Tuple[int, int, int] = celeba_shape, z_dim: int = celeba_z_dim, device: torch.device = torch.device("cpu")) -> None:
+    def __init__(self, image_shape: Tuple[int, int, int] = celeba_shape, z_dim: int = celeba_z_dim) -> None:
         super(CelebaGenerator, self).__init__()
 
         # Input is the latent vector Z.
@@ -37,18 +40,6 @@ class CelebaGenerator(nn.Module):
         self.tconv5 = nn.ConvTranspose2d(ngf, image_shape[0],
             4, 2, 1, bias=False)
         #Output Dimension: (nc) x 64 x 64
-
-        self.to(device, dtype=torch.float32)
-
-        self.apply(self.weights_init)
-
-    def weights_init(self, m: nn.Module):
-        classname = m.__class__.__name__
-        if classname.find('Conv') != -1:
-            m.weight.data.normal_(0.0, 0.02)
-        elif classname.find('BatchNorm') != -1:
-            m.weight.data.normal_(1.0, 0.02)
-            m.bias.data.fill_(0)
 
     def forward(self, x):
         x = F.relu(self.bn1(self.tconv1(x)))

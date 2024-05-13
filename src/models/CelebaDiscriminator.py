@@ -3,11 +3,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dataloaders.CelebaPartitioner import celeba_shape
+import os
+import random
+import numpy as np
 
 ndf = 64
 
 class CelebaDiscriminator(nn.Module):
-    def __init__(self, image_shape: Tuple[int, int, int] = celeba_shape, device: torch.device = torch.device("cpu")) -> None:
+    def __init__(self, image_shape: Tuple[int, int, int] = celeba_shape) -> None:
         super(CelebaDiscriminator, self).__init__()
         self.cv1 = nn.Conv2d(image_shape[0], ndf, kernel_size=4, stride=2, padding=1, bias=False) # (3, 64, 64) -> (64, 32, 32)
         self.cv2 = nn.Conv2d(ndf, ndf*2, 4, 2, 1 ) # (64, 32, 32) -> (128, 16, 16)
@@ -17,16 +20,6 @@ class CelebaDiscriminator(nn.Module):
         self.cv4 = nn.Conv2d(ndf*4, ndf*8, 4, 2, 1, bias=False) # (256, 8, 8) -> (512, 4, 4)
         self.bn4 = nn.BatchNorm2d(ndf* 8)
         self.cv5 = nn.Conv2d(ndf*8, 1, 4, 1, 0, bias=False) # (512, 4, 4) -> (1, 1, 1)
-        self.to(device, dtype=torch.float32)
-        self.apply(self.weights_init)
-
-    def weights_init(self, m: nn.Module):
-        classname = m.__class__.__name__
-        if classname.find('Conv') != -1:
-            m.weight.data.normal_(0.0, 0.02)
-        elif classname.find('BatchNorm') != -1:
-            m.weight.data.normal_(1.0, 0.02)
-            m.bias.data.fill_(0)
 
     def forward(self, x):
         x = F.leaky_relu(self.cv1(x))

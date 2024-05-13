@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from dataloaders.MnistPartitioner import mnist_shape
 from typing import Tuple
 

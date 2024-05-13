@@ -7,7 +7,7 @@ from dataloaders.Cifar10Partitioner import cifar10_shape
 ndf = 64
 
 class CifarDiscriminator(nn.Module):
-    def __init__(self, image_shape: Tuple[int, int, int] = cifar10_shape, device: torch.device = torch.device("cpu")) -> None:
+    def __init__(self, image_shape: Tuple[int, int, int] = cifar10_shape) -> None:
         super(CifarDiscriminator, self).__init__()
         self.main = nn.Sequential(
             # input is (nc) x 32 x 32
@@ -25,17 +25,6 @@ class CifarDiscriminator(nn.Module):
             nn.Conv2d(ndf * 4, 1, 4, 1, 0, bias=False),
             nn.Sigmoid()
         )
-
-        self.to(device, dtype=torch.float32)
-        self.apply(self.weights_init)
-
-    def weights_init(self, m: nn.Module) -> None:
-        classname = m.__class__.__name__
-        if classname.find('Conv') != -1:
-            m.weight.data.normal_(0.0, 0.02)
-        elif classname.find('BatchNorm') != -1:
-            m.weight.data.normal_(1.0, 0.02)
-            m.bias.data.fill_(0)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         if input.is_cuda and self.ngpu > 1:

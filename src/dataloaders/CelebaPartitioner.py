@@ -4,6 +4,8 @@ import torch
 import torch.utils.data
 from torchvision.datasets import CelebA
 import torchvision.transforms as transforms
+from torchvision.utils import make_grid
+from torchvision.transforms.functional import to_pil_image
 
 from dataloaders.DataPartitioner import DataPartitioner, _get_partition
 

@@ -10,6 +10,8 @@ from pathlib import Path
 from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.inception import InceptionScore
 import time
+import random
+import numpy as np
 
 from dataloaders.DataPartitioner import DataPartitioner
 from dataloaders.CelebaPartitioner import CelebaPartitioner, celeba_shape
@@ -24,12 +26,29 @@ from models.CelebaDiscriminator import CelebaDiscriminator
 from models.MnistDiscriminator import MnistDiscriminator
 from models.CifarDiscriminator import CifarDiscriminator
 
+np.random.seed(0)
+random.seed(0)
+torch.manual_seed(0)
+torch.mps.manual_seed(0)
+torch.cuda.manual_seed(0)
+torch.cuda.manual_seed_all(0)
+torch.backends.cudnn.deterministic = True
+
 
 def verify_imports(imports_options: Dict[str, Any], chosen: str) -> None:
     if chosen.lower() not in imports_options:
         raise ValueError(
             f'Option "{args.dataset}" not available. Choose from {imports_options.keys()}'
         )
+
+
+def weights_init(m: nn.Module) -> None:
+    classname = m.__class__.__name__
+    if classname.find("Conv") != -1:
+        m.weight.data.normal_(0.0, 0.02)
+    elif classname.find("BatchNorm") != -1:
+        m.weight.data.normal_(1.0, 0.02)
+        m.bias.data.fill_(0)
 
 
 parser = argparse.ArgumentParser()
@@ -75,8 +94,10 @@ dataset: DataPartitioner = available_datasets[args.dataset][0](1, 0)
 dataset.load_data()
 dataloader = DataLoader(dataset.train_dataset, batch_size=args.batch_size, shuffle=True)
 
-netG = available_generators[args.model][0](image_shape).to(device)
-netD = available_discriminators[args.model](image_shape).to(device)
+netG = available_generators[args.model][0](image_shape).to(device, dtype=torch.float32)
+netD = available_discriminators[args.model](image_shape).to(device, dtype=torch.float32)
+netG.apply(weights_init)
+netD.apply(weights_init)
 
 criterion = nn.BCELoss()
 
@@ -112,6 +133,7 @@ def compute_inception_score(fake_images: torch.Tensor, netG: torch.nn.Module) ->
     inception = InceptionScore(feature=2048)
     inception.update(fake_images)
     return inception.compute()[0]
+
 
 for epoch in range(epochs):
     real_images = next(iter(dataloader))[0].to(device)
@@ -203,7 +225,7 @@ for epoch in range(epochs):
             )
             current_logs["fid_score"] = fid_score
             current_logs["inception_score"] = inception_score
-        
+
         logs_output_path.mkdir(parents=True, exist_ok=True)
         logs.append(current_logs)
         with open(logs_output_path / f"standalone.logs.json", "w") as f:

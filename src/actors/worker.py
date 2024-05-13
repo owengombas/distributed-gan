@@ -8,66 +8,15 @@ from tensordict import TensorDict
 import numpy as np
 from threading import Thread
 from pathlib import Path
-from torchvision.utils import make_grid
-from torchvision.transforms.functional import to_pil_image
 from dataloaders.DataPartitioner import DataPartitioner
 from typing import List, Dict, Any, Tuple
 import os
-import copy
 import json
 import time
 from pathlib import Path
-
-torch.autograd.set_detect_anomaly(True)
-
-
-def save_image_grid(
-    generator: torch.nn.Module,
-    image_shape: Tuple[int, int, int],
-    epoch: int,
-    z_dim: int,
-    device="cpu",
-    nrow=5,
-    n_images=10,
-    save_dir="saved_images",
-):
-    """
-    Generates a grid of images from the generator and saves it to a file.
-
-    Parameters:
-    - generator: the generator model.
-    - epoch: the current epoch number.
-    - z_dim: the size of the latent space vector.
-    - device: the device to run the generator on ('cpu' or 'cuda').
-    - nrow: the number of images per row in the grid.
-    - save_dir: the directory where the image grid will be saved.
-    """
-    # Create noise vector for the generator
-    noise = torch.randn((n_images, z_dim, 1, 1), device=device)
-
-    # Generate images from the noise
-    with torch.no_grad():
-        generator.eval()
-        generated_images = generator(noise)
-        generator.train()
-
-    # Convert the batch of images into a grid
-    grid = make_grid(
-        generated_images, normalize=True, nrow=nrow, value_range=(-1, 1), padding=0
-    )
-
-    # Convert the grid to a PIL image
-    grid_pil = to_pil_image(grid.cpu())
-
-    # Create the save directory if it doesn't exist
-    Path(save_dir).mkdir(parents=True, exist_ok=True)
-
-    # Save the image
-    grid_path = Path(save_dir) / f"generated_epoch_{epoch}.png"
-    grid_pil.save(grid_path)
-
-    print(f"Image grid saved to {grid_path}")
-
+import os
+from torchvision.utils import make_grid
+from torchvision.transforms.functional import to_pil_image
 
 def swap_event(model: torch.nn.Module, rank: int, swap_status: Dict[str, Any]) -> None:
     while True:
@@ -90,7 +39,7 @@ def swap_event(model: torch.nn.Module, rank: int, swap_status: Dict[str, Any]) -
             swap_status["state_dict"] = dict(new_state_dict.flatten_keys("."))
         except Exception as e:
             logging.error(f"Worker {rank} failed to swap state_dict: {e}")
-
+            continue
 
 def worker(
     backend: str,
@@ -128,7 +77,7 @@ def worker(
     logs = {}
 
     discriminator = discriminator.to(device)
-    generator = generator.to(device)
+    print(next(discriminator.parameters())[0][:10])
 
     indices_size = torch.zeros(1, dtype=torch.int, device=torch.device("cpu"))
     dist.recv(tensor=indices_size, src=0, tag=4)
@@ -138,11 +87,16 @@ def worker(
     dist.recv(tensor=indices, src=0, tag=4)
 
     partition_train = data_partitioner.get_subset_from_indices(indices, train=True)
+
+    g = torch.Generator()
+    g.manual_seed(0)
     dataloader = torch.utils.data.DataLoader(
         partition_train,
         batch_size=batch_size,
         shuffle=True,
+        generator=g,
     )
+
     logging.info(
         f"Worker {rank} with length {len(partition_train)} out of {len(data_partitioner.train_dataset)} ({indices})"
     )
@@ -203,7 +157,6 @@ def worker(
         X_g.requires_grad = True
         logging.info(f"Worker {rank} received data of shape {X_gen.shape}")
 
-        generator.train()
         discriminator.train()
         start_time = time.time()
         for l in range(local_epochs):
@@ -259,7 +212,7 @@ def worker(
         logs[epoch]["end_time_send"] = time.time()
 
         if len(other_workers_rank) > 0:
-            if epoch % int(len(partition_train) * swap_interval / batch_size) == 0:
+            if epoch % int(len(partition_train) * swap_interval / batch_size) == 0 and epoch > 0:
                 logs[epoch]["start_time_swap"] = time.time()
                 # pick a random worker to swap with
                 swap_with = np.random.choice(other_workers_rank)
