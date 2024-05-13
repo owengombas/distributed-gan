@@ -85,12 +85,8 @@ def server(
     )
     logging.info(f"Server {i} initialized")
 
-    print(next(generator.parameters())[0][:10])
-
     log_file: Path = log_folder / f"server_{i}.logs.json"
     logs: Dict[str, Any] = {}
-
-    generator.to(device)
 
     optimizer = torch.optim.Adam(
         generator.parameters(), lr=generator_lr, betas=(0, 0.999)

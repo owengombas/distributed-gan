@@ -76,9 +76,6 @@ def worker(
     logs_file = log_folder / f"worker_{rank}.logs.json"
     logs = {}
 
-    discriminator = discriminator.to(device)
-    print(next(discriminator.parameters())[0][:10])
-
     indices_size = torch.zeros(1, dtype=torch.int, device=torch.device("cpu"))
     dist.recv(tensor=indices_size, src=0, tag=4)
     logging.info(f"Worker will store {indices_size.item()} entries")
