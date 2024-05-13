@@ -138,13 +138,18 @@ def worker(
     dist.recv(tensor=indices, src=0, tag=4)
 
     partition_train = data_partitioner.get_subset_from_indices(indices, train=True)
+    dataloader = torch.utils.data.DataLoader(
+        partition_train,
+        batch_size=batch_size,
+        shuffle=True,
+    )
     logging.info(
         f"Worker {rank} with length {len(partition_train)} out of {len(data_partitioner.train_dataset)} ({indices})"
     )
 
     criterion = nn.BCEWithLogitsLoss()
     optimizer_discriminator = torch.optim.Adam(
-        discriminator.parameters(), lr=discriminator_lr
+        discriminator.parameters(), lr=discriminator_lr, betas=(0, 0.999)
     )
 
     other_workers_rank = list(range(1, world_size))
@@ -157,6 +162,8 @@ def worker(
         t.start()
         threads.append(t)
 
+    real_labels = torch.ones(batch_size).to(device)
+    fake_labels = torch.zeros(batch_size).to(device)
     for epoch in range(epochs):
         logs[epoch] = {}
         logging.info(f"Worker {rank} starting epoch {epoch}")
@@ -174,25 +181,24 @@ def worker(
             )
 
         # Get N random samples from the dataset
-        random_indices = torch.randperm(len(partition_train))[:batch_size]
-        real_images: torch.Tensor = torch.stack(
-            [partition_train[i][0] for i in random_indices]
-        ).to(device)
-        grid = make_grid(
-            real_images, nrow=4, normalize=True, value_range=(-1, 1), padding=0
-        )
-        grid_pil = to_pil_image(grid.cpu())
-        grid_path = Path(f"saved_images_worker_{rank}")
-        grid_path.mkdir(parents=True, exist_ok=True)
-        grid_path = grid_path / f"real_epoch_{epoch}.png"
-        grid_pil.save(grid_path)
+        real_images = next(iter(dataloader))[0].to(device)
+
+        # Save real images
+        # grid = make_grid(
+        #     real_images, nrow=4, normalize=True, value_range=(-1, 1), padding=0
+        # )
+        # grid_pil = to_pil_image(grid.cpu())
+        # grid_path = Path(f"saved_images_worker_{rank}")
+        # grid_path.mkdir(parents=True, exist_ok=True)
+        # grid_path = grid_path / f"real_epoch_{epoch}.png"
+        # grid_pil.save(grid_path)
 
         # Receive fake images from the server
-        X_gen = torch.zeros((2, batch_size, *image_shape), dtype=torch.float32)
+        X_gen = torch.zeros((2 * batch_size, *image_shape), dtype=torch.float32)
         dist.recv(tensor=X_gen, src=0, tag=1)
         X_gen = X_gen.to(device)
-        X_n = X_gen[0]
-        X_g = X_gen[1]
+        X_n = X_gen[:batch_size]
+        X_g = X_gen[batch_size:]
         X_n.requires_grad = True
         X_g.requires_grad = True
         logging.info(f"Worker {rank} received data of shape {X_gen.shape}")
@@ -202,9 +208,6 @@ def worker(
         start_time = time.time()
         for l in range(local_epochs):
             start_time_local = time.time()
-            # Create labels
-            real_labels = torch.ones(batch_size).to(device)
-            fake_labels = torch.zeros(batch_size).to(device)
 
             # Train Discriminator with real images
             discriminator.zero_grad()
@@ -238,24 +241,13 @@ def worker(
 
         logs[epoch]["elapsed_time"] = time.time() - start_time
 
-        # generator.eval()
-        # save_image_grid(
-        #     generator=generator,
-        #     image_shape=image_shape,
-        #     z_dim=100,
-        #     nrow=5,
-        #     n_images=100,
-        #     save_dir=f"saved_images_worker_{rank}",
-        #     epoch=epoch,
-        # )
-
         logs[epoch]["start_time_send"] = time.time()
         # Compute output of the discriminator for a given input
         d_loss_eval: torch.Tensor = discriminator(X_g)
         # Compute loss for fake data
         loss_gen: torch.Tensor = criterion(
             d_loss_eval,
-            torch.ones(batch_size, dtype=torch.float32, device=device),
+            real_labels,
         )
         # Compute gradients
         loss_gen.backward()

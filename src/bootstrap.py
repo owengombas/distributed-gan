@@ -124,7 +124,7 @@ if __name__ == "__main__":
         # If the rank is 0, we are the server
         server(
             backend=args.backend,
-            rank=args.rank,
+            i=args.rank,
             world_size=args.world_size,
             batch_size=args.batch_size,
             epochs=args.epochs,

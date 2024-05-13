@@ -1,4 +1,5 @@
 import argparse
+import json
 from typing import Dict, Any, Tuple
 import torch
 import torch.nn as nn
@@ -8,6 +9,7 @@ import torchvision.utils as vutils
 from pathlib import Path
 from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.inception import InceptionScore
+import time
 
 from dataloaders.DataPartitioner import DataPartitioner
 from dataloaders.CelebaPartitioner import CelebaPartitioner, celeba_shape
@@ -22,19 +24,22 @@ from models.CelebaDiscriminator import CelebaDiscriminator
 from models.MnistDiscriminator import MnistDiscriminator
 from models.CifarDiscriminator import CifarDiscriminator
 
+
 def verify_imports(imports_options: Dict[str, Any], chosen: str) -> None:
     if chosen.lower() not in imports_options:
         raise ValueError(
-            f"Option \"{args.dataset}\" not available. Choose from {imports_options.keys()}"
+            f'Option "{args.dataset}" not available. Choose from {imports_options.keys()}'
         )
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", type=str, default="cifar")
 parser.add_argument("--epochs", type=int, default=10)
+parser.add_argument("--local_epochs", type=int, default=10)
 parser.add_argument("--model", type=str, default="cifar")
 parser.add_argument("--batch_size", type=int, default=128)
 parser.add_argument("--log_images_interval", type=int, default=10)
-parser.add_argument("--log_fid_is_interval", type=int, default=500)
+parser.add_argument("--log_fid_is_interval", type=int, default=10)
 parser.add_argument("--n_samples_fid", type=int, default=10)
 parser.add_argument("--generator_lr", type=float, default=0.0002)
 parser.add_argument("--discriminator_lr", type=float, default=0.0002)
@@ -83,35 +88,42 @@ fixed_noise = torch.randn(args.batch_size, nz, 1, 1, device=device)
 real_label = 1
 fake_label = 0
 
-niter = 25
+epochs = args.epochs
+local_epochs = args.local_epochs
 g_loss = []
 d_loss = []
 
 image_output_path: Path = Path("saved_images_standalone")
-image_output_path.mkdir(exist_ok=True)
-
 weights_output_path: Path = Path("weights")
-weights_output_path.mkdir(exist_ok=True)
+logs_output_path: Path = Path("logs")
+logs = []
 
-def compute_fid_score(real_images: torch.Tensor, fake_images: torch.Tensor, netG: torch.nn.Module) -> float:
+
+def compute_fid_score(
+    real_images: torch.Tensor, fake_images: torch.Tensor, netG: torch.nn.Module
+) -> float:
     fid = FrechetInceptionDistance(feature=2048)
     fid.update(real_images, real=True)
     fid.update(fake_images, real=False)
     return fid.compute()
 
+
 def compute_inception_score(fake_images: torch.Tensor, netG: torch.nn.Module) -> float:
     inception = InceptionScore(feature=2048)
     inception.update(fake_images)
-    return inception.compute()
+    return inception.compute()[0]
 
+for epoch in range(epochs):
+    real_images = next(iter(dataloader))[0].to(device)
+    for i in range(local_epochs):
+        start_time = time.time()
 
-for epoch in range(niter):
-    for i, data in enumerate(dataloader, 0):
         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         netD.zero_grad()
-        real_images = data[0].to(device)
         batch_size = real_images.size(0)
-        label = torch.full((batch_size,), real_label, device=device, dtype=torch.float32)
+        label = torch.full(
+            (batch_size,), real_label, device=device, dtype=torch.float32
+        )
 
         output = netD(real_images)
         errD_real = criterion(output, label)
@@ -120,9 +132,9 @@ for epoch in range(niter):
 
         # train with fake
         noise = torch.randn(batch_size, nz, 1, 1, device=device)
-        image_images = netG(noise)
+        fake_images = netG(noise)
         label.fill_(fake_label)
-        output = netD(image_images.detach())
+        output = netD(fake_images.detach())
         errD_fake = criterion(output, label)
         errD_fake.backward()
         D_G_z1 = output.mean().item()
@@ -132,33 +144,71 @@ for epoch in range(niter):
         # (2) Update G network: maximize log(D(G(z)))
         netG.zero_grad()
         label.fill_(real_label)  # fake labels are real for generator cost
-        output = netD(image_images)
+        output = netD(fake_images)
         errG = criterion(output, label)
         errG.backward()
         D_G_z2 = output.mean().item()
         optimizerG.step()
 
-        print(f"Epoch {epoch}, Step {i}, Loss D {errD.item()}, Loss G {errG.item()}")
+        end_time = time.time()
 
-        #save the output
-        if i % args.log_images_interval == 0:
-            vutils.save_image(real_images, image_output_path/f"real_samples_{epoch}.png", normalize=True)
-            image_images = netG(fixed_noise)
-            vutils.save_image(image_images.detach(), image_output_path/f"fake_samples_epoch_{epoch}.png", normalize=True)
+        print(f"Epoch {epoch}, Step {i}, Loss D {errD.item()}, Loss G {errG.item()}")
+        current_logs = {
+            "epoch": epoch,
+            "step": i,
+            "absolut_step": epoch * len(dataloader) + i,
+            "loss_d": errD.item(),
+            "loss_g": errG.item(),
+            "time_elapsed": end_time - start_time,
+            "start_time": start_time,
+            "end_time": end_time,
+        }
+
+        # save the output
+        if epoch % args.log_images_interval == 0:
+            image_output_path.mkdir(parents=True, exist_ok=True)
+
+            vutils.save_image(
+                real_images,
+                image_output_path / f"real_samples_{epoch}.png",
+                normalize=True,
+            )
+            fake_images = netG(fixed_noise)
+            vutils.save_image(
+                fake_images.detach(),
+                image_output_path / f"fake_samples_epoch_{epoch}.png",
+                normalize=True,
+            )
+
+        if epoch % args.log_fid_is_interval == 0:
+            real_images = (real_images + 1) * 127.5
+            fake_images = (fake_images + 1) * 127.5
+
+            if fake_images.shape[1] < 3:
+                fake_images = fake_images.repeat(1, 3, 1, 1)
+            if real_images.shape[1] < 3:
+                real_images = real_images.repeat(1, 3, 1, 1)
+
+            real_images = real_images[: args.n_samples_fid].to(
+                device="cpu", dtype=torch.uint8
+            )
+            fake_images = fake_images[: args.n_samples_fid].to(
+                device="cpu", dtype=torch.uint8
+            )
+            fid_score = compute_fid_score(real_images, fake_images, netG).item()
+            inception_score = compute_inception_score(fake_images, netG).item()
+
+            print(
+                f"Epoch {epoch}, Step {i}, FID {fid_score}, Inception Score {inception_score}"
+            )
+            current_logs["fid_score"] = fid_score
+            current_logs["inception_score"] = inception_score
         
-        # if i % args.log_fid_is_interval == 0:
-        #     real_images = (real_images+1)*127.5
-        #     fake_images = (image_images+1)*127.5
-        #     if fake_images.shape[1] < 3:
-        #         fake_images = fake_images.repeat(1, 3, 1, 1)
-        #     if real_images.shape[1] < 3:
-        #         real_images = real_images.repeat(1, 3, 1, 1)
-        #     real_images = real_images[:args.n_samples_fid].to(device="cpu", dtype=torch.uint8)
-        #     image_images = image_images[:args.n_samples_fid].to(device="cpu", dtype=torch.uint8)
-        #     fid_score = compute_fid_score(real_images, image_images, netG)
-        #     inception_score = compute_inception_score(image_images, netG)
-        #     print(f"Epoch {epoch}, Step {i}, FID {fid_score}, Inception Score {inception_score}")
-    
+        logs_output_path.mkdir(parents=True, exist_ok=True)
+        logs.append(current_logs)
+        with open(logs_output_path / f"standalone.logs.json", "w") as f:
+            json.dump(logs, f)
+
     # Check pointing for every epoch
-    torch.save(netG.state_dict(), weights_output_path/f"netG_epoch_{epoch}.pth")
-    torch.save(netD.state_dict(), weights_output_path/f"netD_epoch_{epoch}.pth")
+    torch.save(netG.state_dict(), weights_output_path / f"netG_epoch_{epoch}.pth")
+    torch.save(netD.state_dict(), weights_output_path / f"netD_epoch_{epoch}.pth")
