@@ -152,6 +152,8 @@ def server(
             "end.calc_gradients": None,
             "start.apply_gradients": None,
             "end.apply_gradients": None,
+            "start.generate_data": None,
+            "end.generate_data": None,
             "fid": None,
             "is": None,
             "start.fid": None,
@@ -160,9 +162,11 @@ def server(
             "end.is": None,
         }
 
+        current_logs["start.generate_data"] = time.time()
         seed = torch.randn((2 * K * batch_size, z_dim, 1, 1), device=device)
         X: torch.tensor = generator(seed).to(device=device)
         X_gs = [X[(k + 1) * batch_size : (k + 2) * batch_size] for k in range(K)]
+        current_logs["end.generate_data"] = time.time()
 
         current_logs["start.send_data"] = time.time()
         feedbacks = feedbacks.to(device="cpu")
@@ -278,7 +282,7 @@ def server(
             json.dump(logs, f)
 
     # Save the generator model
-    save_path = Path("saved_models") / "generator.pt"
+    save_path = Path("weights") / "generator_final.pt"
     torch.save(generator.state_dict(), save_path)
     logging.info(f"Server saved generator model to {save_path}")
 

@@ -123,8 +123,8 @@ def worker(
             "epoch": epoch,
             "start.epoch": time.time(),
             "end.epoch": None,
-            "start.train": None,
-            "end.train": None,
+            "start.calc_gradients": None,
+            "end.calc_gradients": None,
             "start.recv_data": None,
             "end.recv_data": None,
             "start.send": None,
@@ -178,21 +178,10 @@ def worker(
         logging.info(f"Worker {rank} received data of shape {X_gen.shape}")
         current_logs["end.recv_data"] = time.time()
 
-        current_logs["start.train"] = time.time()
+        current_logs["start.calc_gradients"] = time.time()
         discriminator.train()
         losses = torch.zeros(local_epochs, dtype=torch.float32, device=device)
         for l in range(local_epochs):
-            current_local_logs = {
-                "epoch": epoch,
-                "local_epoch": l,
-                "absolut_step": epoch * local_epochs + l,
-                "start.local_epoch": time.time(),
-                "end.local_epoch": None,
-                "d_loss_real": None,
-                "d_loss_fake": None,
-                "d_total_loss": None,
-            }
-
             # Train Discriminator with real images
             discriminator.zero_grad()
             output: torch.Tensor = discriminator(real_images)
@@ -210,7 +199,7 @@ def worker(
                 f"Worker {rank} finished local iteration {l}, discriminator loss {d_loss_real + d_loss_fake}"
             )
         current_logs["mean_d_loss"] = losses.mean().item()
-        current_logs["end.train"] = time.time()
+        current_logs["end.calc_gradients"] = time.time()
 
         current_logs["start.send"] = time.time()
         # Compute output of the discriminator for a given input
@@ -228,6 +217,7 @@ def worker(
         # Send the gradients to the server
         dist.send(tensor=X_g.grad.clone().cpu(), dst=0, tag=3)
         current_logs["end.send"] = time.time()
+        current_logs["end.epoch"] = time.time()
 
         if len(other_workers_rank) > 0:
             if epoch % int(len(partition_train) * swap_interval / batch_size) == 0 and epoch > 0:
@@ -255,7 +245,6 @@ def worker(
                 discriminator = discriminator.to(device)
                 current_logs["end.swap_send"] = time.time()
 
-        current_logs["end.epoch"] = time.time()
         logs.append(current_logs)
         with open(logs_file, "w") as f:
             json.dump(logs, f)
