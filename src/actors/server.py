@@ -1,4 +1,3 @@
-import datetime
 import math
 from typing import List, Tuple
 import torch.distributed as dist
@@ -13,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any
 import json
+from datetime import datetime, timedelta
 from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.inception import InceptionScore
 
@@ -73,6 +73,7 @@ def server(
     z_dim: int,
     log_folder: Path,
     image_shape: Tuple[int, int, int],
+    dataset_name: str,
     device: torch.device = torch.device("cpu"),
     n_samples: int = 5,
     iid: bool = True,
@@ -81,12 +82,13 @@ def server(
         backend=backend,
         rank=i,
         world_size=world_size,
-        timeout=datetime.timedelta(weeks=52),
+        timeout=timedelta(weeks=52),
     )
     logging.info(f"Server {i} initialized")
 
-    log_file: Path = log_folder / f"server_{i}.logs.json"
-    logs: Dict[str, Any] = {}
+    name = f"mdgan.{world_size-1}.{dataset_name}"
+    log_file: Path = log_folder / f"{name}.server.logs.json"
+    logs = []
 
     optimizer = torch.optim.Adam(
         generator.parameters(), lr=generator_lr, betas=(0, 0.999)
@@ -138,21 +140,33 @@ def server(
     feedbacks = torch.zeros((N, batch_size, *image_shape), device="cpu", requires_grad=True, dtype=torch.float32)
     for epoch in range(epochs):
         logging.info(f"Server {i} starting epoch {epoch}")
-        start_time = time.time()
-        logs[epoch] = {
+        current_logs = {
             "epoch": epoch,
-            "start_time": start_time,
+            "start.epoch": time.time(),
+            "end.epoch": None,
+            "start.epoch_calculation": time.time(),
+            "end.epoch_calculation": None,
+            "start.logging": None,
+            "end.logging": None,
+            "start.send_data": None,
+            "end.send_data": None,
+            "start.calc_gradients": None,
+            "end.calc_gradients": None,
+            "start.apply_gradients": None,
+            "end.apply_gradients": None,
+            "fid": None,
+            "is": None,
+            "start.fid": None,
+            "end.fid": None,
+            "start.is": None,
+            "end.is": None,
         }
 
         seed = torch.randn((2 * K * batch_size, z_dim, 1, 1), device=device)
         X: torch.tensor = generator(seed).to(device=device)
         X_gs = [X[(k + 1) * batch_size : (k + 2) * batch_size] for k in range(K)]
 
-        logs[epoch] = {
-            "sent_time": time.time(),
-            **logs[epoch],
-        }
-
+        current_logs["start.send_data"] = time.time()
         feedbacks = feedbacks.to(device="cpu")
         reqs_send: List[Future] = []
         reqs_recv: List[Future] = []
@@ -174,14 +188,9 @@ def server(
             reqs_send[i].wait()
             reqs_recv[i].wait()
         feedbacks = feedbacks.to(device=device)
-        
-        logging.info(f"Server received feedback from all workers")
+        current_logs["end.send_data"] = time.time()
 
-        logs[epoch] = {
-            "received_time": time.time(),
-            **logs[epoch],
-        }
-
+        current_logs["start.calc_gradients"] = time.time()
         # Precompute some constants
         inverse_batch_size_N = 1.0 / (batch_size * N)
 
@@ -219,26 +228,21 @@ def server(
         delta_w = [
             g * inverse_batch_size_N for g in grads_sum
         ]
-
+        current_logs["end.calc_gradients"] = time.time()
         logging.info(f"Server aggregated the gradients from all workers")
 
+        current_logs["start.apply_gradients"] = time.time()
         # Apply the aggregated gradients to the generator
         optimizer.zero_grad()
         for i, p in enumerate(generator.parameters()):
             if delta_w[i] is not None:
                 p.grad = delta_w[i].detach()  # Ensure the grad doesn't carry history
         optimizer.step()
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        logs[epoch] = {
-            "end_time": end_time,
-            "elapsed_time": elapsed_time,
-            "logging_time_end": end_time,
-            **logs[epoch],
-        }
-        logging.info(f"Server applied the gradients, took {elapsed_time} seconds")
+        current_logs["end.apply_gradients"] = time.time()
 
+        current_logs["end.epoch_calculation"] = time.time()
         if epoch % log_interval == 0 or epoch == epochs - 1:
+            current_logs["start.logging"] = time.time()
             fake_images = X.detach().cpu()
             if fake_images.shape[1] < 3:
                 fake_images = fake_images.repeat(1, 3, 1, 1)
@@ -257,20 +261,23 @@ def server(
             grid_pil.save(grid_path)
 
             fake_images = fake_images[:min(n_samples, len(fake_images))]
-            logs[epoch]["is_calculation_time_start"] = time.time()
-            is_score = compute_inception_score(fake_images)
-            logs[epoch]["inception_score"] = is_score
-            logs[epoch]["is_calculation_time_end"] = time.time()
-            logs[epoch]["fid_calculation_time_start"] = time.time()
-            fid_score = compute_fid_score(fake_images, real_images)
-            logs[epoch]["fid_score"] = fid_score
-            logs[epoch]["fid_calculation_time_end"] = time.time()
 
-            logs[epoch]["logging_time_end"] = time.time()
+            current_logs["start.is"] = time.time()
+            is_score = compute_inception_score(fake_images)
+            current_logs["end.is"] = time.time()
+            current_logs["is"] = is_score
+
+            current_logs["start.fid"] = time.time()
+            fid_score = compute_fid_score(fake_images, real_images)
+            current_logs["end.fid"] = time.time()
+            current_logs["fid"] = fid_score
 
             weights_path.mkdir(parents=True, exist_ok=True)
             torch.save(generator.state_dict(), weights_path / f"generator_{epoch}.pt")
+            current_logs["end.logging"] = time.time()
 
+        current_logs["end.epoch"] = time.time()
+        logs.append(current_logs)
         with open(log_file, "w") as f:
             json.dump(logs, f)
 

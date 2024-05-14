@@ -19,6 +19,7 @@ python bootstrap.py \
     --device $9 \
     --batch_size ${11} \
     --iid ${16} \
+    --seed ${17} \
     --master_addr $1 \
     --master_port $2 &
 
@@ -42,6 +43,7 @@ for i in $(seq 1 $((${15}))); do
         --device $9 \
         --batch_size ${11} \
         --iid ${16} \
+        --seed ${17} \
         --master_addr $1 \
         --master_port $2 &
 done

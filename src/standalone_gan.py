@@ -13,6 +13,7 @@ from torchmetrics.image.inception import InceptionScore
 import time
 import random
 import numpy as np
+from datetime import datetime
 
 from dataloaders.DataPartitioner import DataPartitioner
 from dataloaders.CelebaPartitioner import CelebaPartitioner, celeba_shape
@@ -118,6 +119,7 @@ d_loss = []
 image_output_path: Path = Path("saved_images_standalone")
 weights_output_path: Path = Path("weights")
 logs_output_path: Path = Path("logs")
+logs_filename = f"{args.dataset}.standalone.logs.json"
 logs = []
 
 
@@ -137,87 +139,108 @@ def compute_inception_score(fake_images: torch.Tensor, netG: torch.nn.Module) ->
 
 
 for epoch in range(epochs):
-    real_images = next(iter(dataloader))[0].to(device)
-    for i in range(local_epochs):
-        start_time = time.time()
+    current_logs = {
+        "epoch": epoch,
+        "start.epoch": time.time(),
+        "end.epoch": None,
+        "start.epoch_calculation": time.time(),
+        "end.epoch_calculation": None,
+        "absolut_step": epoch * local_epochs,
+        "mean_d_loss": None,
+        "mean_g_loss": None,
+        "start.train": time.time(),
+        "end.train": None,
+        "start.fid": None,
+        "end.fid": None,
+        "start.is": None,
+        "end.is": None,
+        "fid": None,
+        "is": None,
+        "start.logging": None,
+        "end.logging": None,
+    }
 
+    real_images = next(iter(dataloader))[0].to(device)
+    losses_d = torch.zeros(local_epochs, device=device, dtype=torch.float32)
+    losses_g = torch.zeros(local_epochs, device=device, dtype=torch.float32)
+    for i in range(local_epochs):
         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         netD.zero_grad()
         batch_size = real_images.size(0)
         label = torch.full(
             (batch_size,), real_label, device=device, dtype=torch.float32
         )
-
-        output = netD(real_images)
-        errD_real = criterion(output, label)
+        output: torch.Tensor = netD(real_images)
+        errD_real: torch.Tensor = criterion(output, label)
         errD_real.backward()
-        D_x = output.mean().item()
 
         # train with fake
         noise = torch.randn(batch_size, nz, 1, 1, device=device)
         fake_images = netG(noise)
         label.fill_(fake_label)
-        output = netD(fake_images.detach())
-        errD_fake = criterion(output, label)
+        output: torch.Tensor = netD(fake_images.detach())
+        errD_fake: torch.Tensor = criterion(output, label)
         errD_fake.backward()
-        D_G_z1 = output.mean().item()
-        errD = errD_real + errD_fake
+        errD: torch.Tensor = errD_real + errD_fake
+        losses_d[i] = errD
         optimizerD.step()
 
         # (2) Update G network: maximize log(D(G(z)))
         netG.zero_grad()
         label.fill_(real_label)  # fake labels are real for generator cost
-        output = netD(fake_images)
-        errG = criterion(output, label)
+        output: torch.Tensor = netD(fake_images)
+        errG: torch.Tensor = criterion(output, label)
+        losses_g[i] = errG
         errG.backward()
-        D_G_z2 = output.mean().item()
         optimizerG.step()
 
-        end_time = time.time()
-
         print(f"Epoch {epoch}, Step {i}, Loss D {errD.item()}, Loss G {errG.item()}")
-        current_logs = {
-            "epoch": epoch,
-            "step": i,
-            "absolut_step": epoch * local_epochs + i,
-            "loss_d": errD.item(),
-            "loss_g": errG.item(),
-            "time_elapsed": end_time - start_time,
-            "start_time": start_time,
-            "end_time": end_time,
-        }
+    current_logs["mean_d_loss"] = losses_d.mean().item()
+    current_logs["mean_g_loss"] = losses_g.mean().item()
+    current_logs["end.epoch_calculation"] = time.time()
+    current_logs["start.train"] = time.time()
 
-        # save the output
-        if epoch % args.log_images_interval == 0:
-            image_output_path.mkdir(parents=True, exist_ok=True)
-            grid = make_grid(fake_images, nrow=4, normalize=True, value_range=(-1, 1), padding=0)
-            grid_pil = to_pil_image(grid.cpu())
-            grid_pil.save(image_output_path / f"fake_samples_{epoch}.png")
+    # save the output
+    if epoch % args.log_images_interval == 0:
+        image_output_path.mkdir(parents=True, exist_ok=True)
+        grid = make_grid(fake_images, nrow=4, normalize=True, value_range=(-1, 1), padding=0)
+        grid_pil = to_pil_image(grid.cpu())
+        grid_pil.save(image_output_path / f"fake_samples_{epoch}.png")
 
-        if epoch % args.log_fid_is_interval == 0:
-            real_images = (real_images + 1) * 0.5
-            fake_images = (fake_images + 1) * 0.5
+    if epoch % args.log_fid_is_interval == 0:
+        current_logs["start.logging"] = time.time()
+        real_images = (real_images + 1) * 0.5
+        fake_images = (fake_images + 1) * 0.5
 
-            if fake_images.shape[1] < 3:
-                fake_images = fake_images.repeat(1, 3, 1, 1)
-            if real_images.shape[1] < 3:
-                real_images = real_images.repeat(1, 3, 1, 1)
+        if fake_images.shape[1] < 3:
+            fake_images = fake_images.repeat(1, 3, 1, 1)
+        if real_images.shape[1] < 3:
+            real_images = real_images.repeat(1, 3, 1, 1)
 
-            real_images = real_images[: args.n_samples_fid].to(device="cpu")
-            fake_images = fake_images[: args.n_samples_fid].to(device="cpu")
-            fid_score = compute_fid_score(real_images, fake_images, netG).item()
-            inception_score = compute_inception_score(fake_images, netG).item()
+        real_images = real_images[: args.n_samples_fid].to(device="cpu")
+        fake_images = fake_images[: args.n_samples_fid].to(device="cpu")
 
-            print(
-                f"Epoch {epoch}, Step {i}, FID {fid_score}, Inception Score {inception_score}"
-            )
-            current_logs["fid_score"] = fid_score
-            current_logs["inception_score"] = inception_score
+        current_logs["start.fid"] = time.time()
+        fid_score = compute_fid_score(real_images, fake_images, netG).item()
+        current_logs["end.fid"] = time.time()
+        current_logs["fid"] = fid_score
+
+        current_logs["start.is"] = time.time()
+        inception_score = compute_inception_score(fake_images, netG).item()
+        current_logs["end.is"] = time.time()
+        current_logs["is"] = inception_score
+
+        print(
+            f"Epoch {epoch}, Step {i}, FID {fid_score}, Inception Score {inception_score}"
+        )
 
         logs_output_path.mkdir(parents=True, exist_ok=True)
-        logs.append(current_logs)
-        with open(logs_output_path / f"standalone.logs.json", "w") as f:
-            json.dump(logs, f)
+        current_logs["end.logging"] = time.time()
+
+    current_logs["end.epoch"] = time.time()
+    logs.append(current_logs)
+    with open(logs_output_path / logs_filename, "w") as f:
+        json.dump(logs, f)
 
     # Check pointing for every epoch
     torch.save(netG.state_dict(), weights_output_path / f"netG_epoch_{epoch}.pth")

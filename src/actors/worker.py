@@ -1,4 +1,3 @@
-import datetime
 import torch.distributed as dist
 import torch
 import logging
@@ -17,6 +16,7 @@ from pathlib import Path
 import os
 from torchvision.utils import make_grid
 from torchvision.transforms.functional import to_pil_image
+from datetime import datetime, timedelta
 
 def swap_event(model: torch.nn.Module, rank: int, swap_status: Dict[str, Any]) -> None:
     while True:
@@ -57,6 +57,7 @@ def worker(
     batch_size: int,
     image_shape: Tuple[int, int, int],
     log_folder: Path,
+    dataset_name: str,
     device: torch.device = torch.device("cpu"),
     z_dim: int = 100,
 ) -> None:
@@ -69,12 +70,12 @@ def worker(
         backend=backend,
         rank=rank,
         world_size=world_size,
-        timeout=datetime.timedelta(weeks=52),
+        timeout=timedelta(weeks=52),
     )
     logging.info(f"Worker {rank} initialized on device {device}")
 
-    logs_file = log_folder / f"worker_{rank}.logs.json"
-    logs = {}
+    name = f"mdgan.{world_size-1}.{dataset_name}"
+    logs_file = log_folder / f"{name}.worker.{rank}.logs.json"
 
     indices_size = torch.zeros(1, dtype=torch.int, device=torch.device("cpu"))
     dist.recv(tensor=indices_size, src=0, tag=4)
@@ -115,18 +116,39 @@ def worker(
 
     real_labels = torch.ones(batch_size).to(device)
     fake_labels = torch.zeros(batch_size).to(device)
+    logs = []
     for epoch in range(epochs):
-        logs[epoch] = {}
         logging.info(f"Worker {rank} starting epoch {epoch}")
+        current_logs = {
+            "epoch": epoch,
+            "start.epoch": time.time(),
+            "end.epoch": None,
+            "start.train": None,
+            "end.train": None,
+            "start.recv_data": None,
+            "end.recv_data": None,
+            "start.send": None,
+            "end.send": None,
+            "start.swap_recv": None,
+            "end.swap_recv": None,
+            "start.swap_send": None,
+            "end.swap_send": None,
+            "recv_swap_from": None,
+            "sent_swap_to": None,
+            "mean_d_loss": None,
+        }
 
         # Swap state_dict if needed with another worker
         if swap_status["rank"] != -1:
+            current_logs["start.swap_recv"] = time.time()
             swap_with = swap_status["rank"]
+            current_logs["start.recv_swap_from"] = swap_with
             logging.info(f"Worker {rank} swapping state_dict with worker {swap_with}")
             discriminator.load_state_dict(swap_status["state_dict"])
             discriminator = discriminator.to(device)
             swap_status["rank"] = -1
             swap_status["state_dict"] = None
+            current_logs["end.swap_recv"] = time.time()
             logging.info(
                 f"Worker {rank} finished swapping state_dict with worker {swap_with}"
             )
@@ -145,6 +167,7 @@ def worker(
         # grid_pil.save(grid_path)
 
         # Receive fake images from the server
+        current_logs["start.recv_data"] = time.time()
         X_gen = torch.zeros((2 * batch_size, *image_shape), dtype=torch.float32)
         dist.recv(tensor=X_gen, src=0, tag=1)
         X_gen = X_gen.to(device)
@@ -153,11 +176,22 @@ def worker(
         X_n.requires_grad = True
         X_g.requires_grad = True
         logging.info(f"Worker {rank} received data of shape {X_gen.shape}")
+        current_logs["end.recv_data"] = time.time()
 
+        current_logs["start.train"] = time.time()
         discriminator.train()
-        start_time = time.time()
+        losses = torch.zeros(local_epochs, dtype=torch.float32, device=device)
         for l in range(local_epochs):
-            start_time_local = time.time()
+            current_local_logs = {
+                "epoch": epoch,
+                "local_epoch": l,
+                "absolut_step": epoch * local_epochs + l,
+                "start.local_epoch": time.time(),
+                "end.local_epoch": None,
+                "d_loss_real": None,
+                "d_loss_fake": None,
+                "d_total_loss": None,
+            }
 
             # Train Discriminator with real images
             discriminator.zero_grad()
@@ -170,28 +204,15 @@ def worker(
             d_loss = d_loss_real + d_loss_fake
             d_loss.backward()
             optimizer_discriminator.step()
-
-            if l % log_interval == 0 or l == local_epochs - 1:
-                end_time_local = time.time()
-                logs[epoch][l] = {
-                    "d_loss_real": d_loss_real.item(),
-                    "d_loss_fake": d_loss_fake.item(),
-                    "d_total_loss": (d_loss_real + d_loss_fake).item(),
-                    "elapsed_time": end_time_local - start_time_local,
-                    "start_time": start_time_local,
-                    "end_time": end_time_local,
-                }
-
-                with open(logs_file, "w") as f:
-                    json.dump(logs, f)
+            losses[l] = d_loss
 
             logging.info(
                 f"Worker {rank} finished local iteration {l}, discriminator loss {d_loss_real + d_loss_fake}"
             )
+        current_logs["mean_d_loss"] = losses.mean().item()
+        current_logs["end.train"] = time.time()
 
-        logs[epoch]["elapsed_time"] = time.time() - start_time
-
-        logs[epoch]["start_time_send"] = time.time()
+        current_logs["start.send"] = time.time()
         # Compute output of the discriminator for a given input
         d_loss_eval: torch.Tensor = discriminator(X_g)
         # Compute loss for fake data
@@ -206,13 +227,14 @@ def worker(
         )
         # Send the gradients to the server
         dist.send(tensor=X_g.grad.clone().cpu(), dst=0, tag=3)
-        logs[epoch]["end_time_send"] = time.time()
+        current_logs["end.send"] = time.time()
 
         if len(other_workers_rank) > 0:
             if epoch % int(len(partition_train) * swap_interval / batch_size) == 0 and epoch > 0:
-                logs[epoch]["start_time_swap"] = time.time()
+                current_logs["start.swap_send"] = time.time()
                 # pick a random worker to swap with
                 swap_with = np.random.choice(other_workers_rank)
+                current_logs["sent_swap_to"] = swap_with
                 logging.info(f"Worker {rank} picked worker {swap_with} to swap with")
 
                 # Send the state_dict to the other worker
@@ -231,8 +253,10 @@ def worker(
                 # Swap state_dict
                 discriminator.load_state_dict(dict(state_dict.flatten_keys(".")))
                 discriminator = discriminator.to(device)
-                logs[epoch]["end_time_swap"] = time.time()
+                current_logs["end.swap_send"] = time.time()
 
+        current_logs["end.epoch"] = time.time()
+        logs.append(current_logs)
         with open(logs_file, "w") as f:
             json.dump(logs, f)
 

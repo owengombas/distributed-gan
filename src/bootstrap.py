@@ -23,7 +23,7 @@ parser.add_argument("--swap_interval", type=int, default=1)
 parser.add_argument("--local_epochs", type=int, default=10)
 parser.add_argument("--model", type=str, default="cifar")
 parser.add_argument("--batch_size", type=int, default=32)
-parser.add_argument("--log_interval", type=int, default=10)
+parser.add_argument("--log_interval", type=int, default=50)
 parser.add_argument("--n_samples_fid", type=int, default=10)
 parser.add_argument("--generator_lr", type=float, default=0.001)
 parser.add_argument("--discriminator_lr", type=float, default=0.004)
@@ -142,6 +142,7 @@ if __name__ == "__main__":
             generator_lr=args.generator_lr,
             z_dim=z_dim,
             log_folder=log_folder,
+            dataset_name=args.dataset,
         )
     else:
         # If the rank is 0, we are the server
@@ -162,5 +163,6 @@ if __name__ == "__main__":
             z_dim=z_dim,
             log_interval=args.log_interval,
             log_folder=log_folder,
-            iid=args.iid==1
+            iid=args.iid==1,
+            dataset_name=args.dataset,
         )
