@@ -261,7 +261,7 @@ def worker(
             json.dump(logs, f)
 
     # Save the model
-    model_path = Path(f"saved_models/worker_{rank}")
+    model_path = Path(f"weights/worker_{rank}")
     model_path.mkdir(parents=True, exist_ok=True)
     model_path = model_path / "discriminator.pth"
     torch.save(discriminator.state_dict(), model_path)

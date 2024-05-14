@@ -28,14 +28,6 @@ from models.CelebaDiscriminator import CelebaDiscriminator
 from models.MnistDiscriminator import MnistDiscriminator
 from models.CifarDiscriminator import CifarDiscriminator
 
-np.random.seed(0)
-random.seed(0)
-torch.manual_seed(0)
-torch.mps.manual_seed(0)
-torch.cuda.manual_seed(0)
-torch.cuda.manual_seed_all(0)
-torch.backends.cudnn.deterministic = True
-
 
 def verify_imports(imports_options: Dict[str, Any], chosen: str) -> None:
     if chosen.lower() not in imports_options:
@@ -59,13 +51,21 @@ parser.add_argument("--epochs", type=int, default=10)
 parser.add_argument("--local_epochs", type=int, default=10)
 parser.add_argument("--model", type=str, default="cifar")
 parser.add_argument("--batch_size", type=int, default=128)
-parser.add_argument("--log_images_interval", type=int, default=10)
-parser.add_argument("--log_fid_is_interval", type=int, default=10)
+parser.add_argument("--log_interval", type=int, default=10)
 parser.add_argument("--n_samples_fid", type=int, default=10)
 parser.add_argument("--generator_lr", type=float, default=0.0002)
 parser.add_argument("--discriminator_lr", type=float, default=0.0002)
 parser.add_argument("--device", type=str, default="cpu")
+parser.add_argument("--seed", type=int, default=0)
 args = parser.parse_args()
+
+np.random.seed(args.seed)
+random.seed(args.seed)
+torch.manual_seed(args.seed)
+torch.mps.manual_seed(args.seed)
+torch.cuda.manual_seed(args.seed)
+torch.cuda.manual_seed_all(args.seed)
+torch.backends.cudnn.deterministic = True
 
 available_datasets: Dict[str, Tuple[DataPartitioner, int]] = {
     "cifar": (Cifar10Partitioner, cifar10_shape),
@@ -156,8 +156,6 @@ for epoch in range(epochs):
         "end.is": None,
         "fid": None,
         "is": None,
-        "start.logging": None,
-        "end.logging": None,
     }
 
     real_images = next(iter(dataloader))[0].to(device)
@@ -200,15 +198,7 @@ for epoch in range(epochs):
     current_logs["end.epoch_calculation"] = time.time()
     current_logs["start.train"] = time.time()
 
-    # save the output
-    if epoch % args.log_images_interval == 0:
-        image_output_path.mkdir(parents=True, exist_ok=True)
-        grid = make_grid(fake_images, nrow=4, normalize=True, value_range=(-1, 1), padding=0)
-        grid_pil = to_pil_image(grid.cpu())
-        grid_pil.save(image_output_path / f"fake_samples_{epoch}.png")
-
-    if epoch % args.log_fid_is_interval == 0:
-        current_logs["start.logging"] = time.time()
+    if epoch % args.log_interval == 0:
         real_images = (real_images + 1) * 0.5
         fake_images = (fake_images + 1) * 0.5
 
@@ -219,6 +209,11 @@ for epoch in range(epochs):
 
         real_images = real_images[: args.n_samples_fid].to(device="cpu")
         fake_images = fake_images[: args.n_samples_fid].to(device="cpu")
+
+        image_output_path.mkdir(parents=True, exist_ok=True)
+        grid = make_grid(fake_images, nrow=4, normalize=True, value_range=(0, 1), padding=0)
+        grid_pil = to_pil_image(grid.cpu())
+        grid_pil.save(image_output_path / f"fake_samples_{epoch}.png")
 
         current_logs["start.fid"] = time.time()
         fid_score = compute_fid_score(real_images, fake_images, netG).item()
@@ -235,7 +230,6 @@ for epoch in range(epochs):
         )
 
         logs_output_path.mkdir(parents=True, exist_ok=True)
-        current_logs["end.logging"] = time.time()
 
     current_logs["end.epoch"] = time.time()
     logs.append(current_logs)

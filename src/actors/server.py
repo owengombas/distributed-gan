@@ -110,7 +110,7 @@ def server(
     real_images = (real_images + 1) * 0.5
 
     grid_real = make_grid(
-        real_images.to(dtype=torch.float32), nrow=4, normalize=True, value_range=(0, 255), padding=0
+        real_images.to(dtype=torch.float32), nrow=4, normalize=True, value_range=(0, 1), padding=0
     )
     # Convert the grid to a PIL image
     grid_pil = to_pil_image(grid_real)
@@ -146,8 +146,6 @@ def server(
             "end.epoch": None,
             "start.epoch_calculation": time.time(),
             "end.epoch_calculation": None,
-            "start.logging": None,
-            "end.logging": None,
             "start.send_data": None,
             "end.send_data": None,
             "start.calc_gradients": None,
@@ -242,7 +240,6 @@ def server(
 
         current_logs["end.epoch_calculation"] = time.time()
         if epoch % log_interval == 0 or epoch == epochs - 1:
-            current_logs["start.logging"] = time.time()
             fake_images = X.detach().cpu()
             if fake_images.shape[1] < 3:
                 fake_images = fake_images.repeat(1, 3, 1, 1)
@@ -274,7 +271,6 @@ def server(
 
             weights_path.mkdir(parents=True, exist_ok=True)
             torch.save(generator.state_dict(), weights_path / f"generator_{epoch}.pt")
-            current_logs["end.logging"] = time.time()
 
         current_logs["end.epoch"] = time.time()
         logs.append(current_logs)
@@ -284,8 +280,8 @@ def server(
     # Save the generator model
     save_path = Path("saved_models") / "generator.pt"
     torch.save(generator.state_dict(), save_path)
-    logging.info(f"Server {i} saved generator model to {save_path}")
+    logging.info(f"Server saved generator model to {save_path}")
 
     # Distroy the process group
     dist.destroy_process_group()
-    logging.info(f"Server {i} finished training")
+    logging.info(f"Server finished training")

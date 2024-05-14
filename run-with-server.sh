@@ -1,51 +1,73 @@
 #!/bin/bash
 cd src
 
-echo "Starting server on $1:$2"
-python bootstrap.py \
-    --name master \
-    --backend gloo \
-    --port $2 \
-    --world_size $3 \
-    --rank 0 \
-    --dataset $4 \
-    --epochs $6 \
-    --local_epochs $8 \
-    --swap_interval ${10} \
-    --n_samples_fid ${14} \
-    --discriminator_lr ${12} \
-    --generator_lr ${13} \
-    --model $5 \
-    --device $9 \
-    --batch_size ${11} \
-    --iid ${16} \
-    --seed ${17} \
-    --master_addr $1 \
-    --master_port $2 &
+world_size=5
+batch_size=10
+discriminator_lr=0.0002
+generator_lr=0.0002
+seed=3
+backend=gloo
+port=1234
+dataset=cifar
+model=$dataset
+epochs=200
+local_epochs=1
+swap_interval=1
+iid=1
+n_samples_fid=10000
+device=mps
+master_addr=localhost
+master_port=1234
+log_interval=50
+n_clients=4
 
-for i in $(seq 1 $((${15}))); do
+echo "Starting server on $master_addr:$master_port"
+python bootstrap.py \
+    --name "Server" \
+    --backend $backend \
+    --port $port \
+    --world_size $world_size \
+    --dataset $dataset \
+    --rank 0 \
+    --epochs $epochs \
+    --local_epochs $local_epochs \
+    --swap_interval $swap_interval \
+    --discriminator_lr $discriminator_lr \
+    --n_samples_fid $n_samples_fid \
+    --generator_lr $generator_lr \
+    --model $model \
+    --device $device \
+    --batch_size $batch_size \
+    --iid $iid \
+    --seed $seed \
+    --master_addr $master_addr \
+    --master_port $master_port \
+    --log_interval $log_interval &
+
+for i in $(seq 1 $((${n_clients}))); do
     echo "Starting client $i"
-    port=$(($2 + i))
+    port=$((${port} + i))
     python bootstrap.py \
         --name "Client $i" \
-        --backend gloo \
+        --backend $backend \
         --port $port \
-        --world_size $3 \
-        --dataset $4 \
+        --world_size $world_size \
+        --dataset $dataset \
         --rank $i \
-        --epochs $6 \
-        --local_epochs $8 \
-        --swap_interval ${10} \
-        --discriminator_lr ${12} \
-        --n_samples_fid ${14} \
-        --generator_lr ${13} \
-        --model $7 \
-        --device $9 \
-        --batch_size ${11} \
-        --iid ${16} \
-        --seed ${17} \
-        --master_addr $1 \
-        --master_port $2 &
+        --epochs $epochs \
+        --local_epochs $local_epochs \
+        --swap_interval $swap_interval \
+        --discriminator_lr $discriminator_lr \
+        --n_samples_fid $n_samples_fid \
+        --generator_lr $generator_lr \
+        --model $model \
+        --device $device \
+        --batch_size $batch_size \
+        --iid $iid \
+        --seed $seed \
+        --master_addr $master_addr \
+        --master_port $master_port \
+        --log_interval $log_interval &
 done
 
 # Enable CTRL+C to stop all background processes
