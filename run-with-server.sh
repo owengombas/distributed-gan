@@ -1,24 +1,14 @@
 #!/bin/bash
+. ./set-args.sh
 cd src
 
-world_size=5
-batch_size=10
-discriminator_lr=0.0002
-generator_lr=0.0002
 seed=3
+world_size=5
 backend=gloo
 port=1234
-dataset=cifar
-model=$dataset
-epochs=200
-local_epochs=1
 swap_interval=1
-iid=1
-n_samples_fid=10000
-device=mps
 master_addr=localhost
 master_port=1234
-log_interval=50
 n_clients=4
 
 echo "Starting server on $master_addr:$master_port"
