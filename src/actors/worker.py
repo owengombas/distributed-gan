@@ -164,7 +164,6 @@ def worker(
             "recv_swap_from": None,
             "sent_swap_to": None,
             "mean_d_loss": None,
-            "size.data": None,
             "size.model": model_size_mb,
         }
 

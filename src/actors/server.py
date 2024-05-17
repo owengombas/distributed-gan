@@ -159,6 +159,10 @@ def server(
 
     generator.train()
     feedbacks = torch.zeros((N, batch_size, *image_shape), device="cpu", requires_grad=True, dtype=torch.float32)
+    size_feedback = feedbacks.element_size() * feedbacks.nelement() / 1e6 # in MB
+
+    fake_data = torch.zeros((2 * K * batch_size, *image_shape), device="cpu", dtype=torch.float32)
+    size_fake_data = 2 * K * batch_size * (fake_data.element_size() * fake_data.nelement()) / 1e6 # in MB
     for epoch in range(epochs):
         logging.info(f"Server {i} starting epoch {epoch}")
         current_logs = {
@@ -183,8 +187,8 @@ def server(
             "end.fid": None,
             "start.is": None,
             "end.is": None,
-            "size.data": None,
-            "size.feedback": None,
+            "size.data": size_fake_data,
+            "size.feedback": size_feedback,
         }
 
         current_logs["start.generate_data"] = time.time()
@@ -210,7 +214,6 @@ def server(
             logging.info(
                 f"Server sending generated data {k} with shape {t_n.shape} to worker {i+1}"
             )
-            current_logs["size.data"] = t_n.element_size() * t_n.nelement()
             req = dist.isend(tensor=t_n, dst=i+1, tag=1)
             reqs_send.append(req)
             logging.info(f"Server sent data to worker {i}")
@@ -227,7 +230,6 @@ def server(
             reqs_recv[i].wait()
         current_logs["end.recv_data"] = time.time()
         logging.info(f"Server received feedback from all workers")
-        current_logs["size.feedback"] = feedbacks.element_size() * feedbacks.nelement()
 
         # Migrate the feedbacks to the device (could be the GPU, the gloo backend enforce to receive on CPU)
         feedbacks = feedbacks.to(device=device)
