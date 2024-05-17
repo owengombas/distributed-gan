@@ -34,6 +34,14 @@ parser.add_argument("--iid", type=int, default=1)
 parser.add_argument("--seed", type=int, default=1)
 args = parser.parse_args()
 
+seed_shifted = args.seed + args.rank
+np.random.seed(seed_shifted)
+random.seed(seed_shifted)
+torch.manual_seed(seed_shifted)
+torch.mps.manual_seed(seed_shifted)
+torch.cuda.manual_seed(seed_shifted)
+torch.cuda.manual_seed_all(seed_shifted)
+torch.backends.cudnn.deterministic = True
 
 def verify_imports(imports_options: Dict[str, Any], chosen: str) -> None:
     if chosen.lower() not in imports_options:
@@ -65,15 +73,6 @@ if __name__ == "__main__":
 
     log_folder: Path = Path("logs")
     log_folder.mkdir(parents=True, exist_ok=True)
-
-    seed_shifted = args.seed + args.rank
-    np.random.seed(seed_shifted)
-    random.seed(seed_shifted)
-    torch.manual_seed(seed_shifted)
-    torch.mps.manual_seed(seed_shifted)
-    torch.cuda.manual_seed(seed_shifted)
-    torch.cuda.manual_seed_all(seed_shifted)
-    torch.backends.cudnn.deterministic = True
 
     from dataloaders.Cifar10Partitioner import Cifar10Partitioner, cifar10_shape
     from dataloaders.MnistPartitioner import MnistPartitioner, mnist_shape
