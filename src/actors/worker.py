@@ -7,7 +7,7 @@ from tensordict import TensorDict
 import numpy as np
 from threading import Thread
 from pathlib import Path
-from dataloaders.DataPartitioner import DataPartitioner
+from datasets.DataPartitioner import DataPartitioner
 from typing import List, Dict, Any, Tuple
 import os
 import json
@@ -18,7 +18,7 @@ from torchvision.utils import make_grid
 from torchvision.transforms.functional import to_pil_image
 from datetime import datetime, timedelta
 
-def swap_event(model: torch.nn.Module, rank: int, swap_status: Dict[str, Any]) -> None:
+def _swap_event(model: torch.nn.Module, rank: int, swap_status: Dict[str, Any]) -> None:
     """
     Swap state_dict with another worker
     :param model: torch.nn.Module the instance of the model to send back to the other worker
@@ -47,7 +47,7 @@ def swap_event(model: torch.nn.Module, rank: int, swap_status: Dict[str, Any]) -
             logging.error(f"Worker {rank} failed to swap state_dict: {e}")
             continue
 
-def worker(
+def start(
     backend: str,
     rank: int,
     world_size: int,
@@ -125,7 +125,7 @@ def worker(
     swap_status = {"rank": -1, "state_dict": None, "stop": False}
     threads: List[Thread] = []
     for other_worker in other_workers_rank:
-        t = Thread(target=swap_event, args=(discriminator, other_worker, swap_status))
+        t = Thread(target=_swap_event, args=(discriminator, other_worker, swap_status))
         t.start()
         threads.append(t)
 

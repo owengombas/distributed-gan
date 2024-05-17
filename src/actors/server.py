@@ -16,9 +16,7 @@ from datetime import datetime, timedelta
 from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.inception import InceptionScore
 
-save_dir: Path = Path("saved_images")
-
-def compute_fid_score(fake_images: torch.Tensor, real_images: torch.Tensor) -> float:
+def _compute_fid_score(fake_images: torch.Tensor, real_images: torch.Tensor) -> torch.Tensor:
     """
     Compute the Frechet Inception Distance between the fake and real images
     :param fake_images: The generated images
@@ -31,10 +29,10 @@ def compute_fid_score(fake_images: torch.Tensor, real_images: torch.Tensor) -> f
     fid_score = FrechetInceptionDistance.compute(fid)
     logging.info(f"Server computed FID score: {fid_score}")
 
-    return fid_score.item()
+    return fid_score
 
 
-def compute_inception_score(generated_images: torch.Tensor) -> float:
+def _compute_inception_score(generated_images: torch.Tensor) -> torch.Tensor:
     """
     Compute the Inception score for the generated images
     :param generated_images: The generated images
@@ -44,12 +42,12 @@ def compute_inception_score(generated_images: torch.Tensor) -> float:
     metric = InceptionScore(normalize=True, splits=1)
     metric.update(generated_images)
     scores = InceptionScore.compute(metric)
-    mean_score = scores[0].item()
+    mean_score = scores[0]
     logging.info(f"Server computed Inception score: {mean_score}")
     return mean_score
 
 
-def split_dataset(
+def _split_dataset(
     dataset_size: int, world_size: int, iid: bool = False, generator: torch.Generator = torch.Generator()
 ) -> List[torch.Tensor]:
     """
@@ -70,7 +68,7 @@ def split_dataset(
     return split_indices
 
 
-def server(
+def start(
     backend: str,
     i: int,
     generator_lr: float,
@@ -97,6 +95,7 @@ def server(
     )
     logging.info(f"Server {i} initialized")
 
+    image_save_dir: Path = Path("saved_images")
     name = f"mdgan.{world_size-1}.{dataset_name}"
     log_file: Path = log_folder / f"{name}.server.logs.json"
     logs = []
@@ -133,12 +132,12 @@ def server(
     # Convert the grid to a PIL image
     grid_pil = to_pil_image(grid_real)
     # Create the save directory if it doesn't exist and save the grid
-    Path(save_dir).mkdir(parents=True, exist_ok=True)
-    grid_path = Path(save_dir) / f"real_images.png"
+    Path(image_save_dir).mkdir(parents=True, exist_ok=True)
+    grid_path = Path(image_save_dir) / f"real_images.png"
     grid_pil.save(grid_path)
 
     # Split the dataset into N parts in a IID or non-IID manner
-    list_of_indices = split_dataset(len(dataset), world_size - 1, iid=iid, generator=g)
+    list_of_indices = _split_dataset(len(dataset), world_size - 1, iid=iid, generator=g)
     logging.info(f"Server {i} split the dataset into {len(list_of_indices)} parts")
     # Send the indices to the workers to inform them about the data they will use
     for i, indices in enumerate(list_of_indices):
@@ -299,21 +298,21 @@ def server(
             # Convert the grid to a PIL image
             grid_pil = to_pil_image(grid_fake)
             # Create the save directory if it doesn't exist
-            Path(save_dir).mkdir(parents=True, exist_ok=True)
-            grid_path = Path(save_dir) / f"generated_epoch_{epoch}.png"
+            Path(image_save_dir).mkdir(parents=True, exist_ok=True)
+            grid_path = Path(image_save_dir) / f"generated_epoch_{epoch}.png"
             grid_pil.save(grid_path)
 
             fake_images = fake_images[:min(n_samples, len(fake_images))]
 
             current_logs["start.is"] = time.time()
-            is_score = compute_inception_score(fake_images)
+            is_score = _compute_inception_score(fake_images)
             current_logs["end.is"] = time.time()
-            current_logs["is"] = is_score
+            current_logs["is"] = is_score.item()
 
             current_logs["start.fid"] = time.time()
-            fid_score = compute_fid_score(fake_images, real_images)
+            fid_score = _compute_fid_score(fake_images, real_images)
             current_logs["end.fid"] = time.time()
-            current_logs["fid"] = fid_score
+            current_logs["fid"] = fid_score.item()
 
             weights_path.mkdir(parents=True, exist_ok=True)
             torch.save(generator.state_dict(), weights_path / f"generator_{epoch}.pt")

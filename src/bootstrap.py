@@ -3,13 +3,27 @@ import logging
 import argparse
 import os
 from typing import Tuple, Dict, Any
-from dataloaders.DataPartitioner import DataPartitioner
 from pathlib import Path
 import torch.nn as nn
 import random
 import numpy as np
+import importlib
+from datasets.DataPartitioner import DataPartitioner
+from actors import worker, server
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
+
+def _weights_init(m: nn.Module) -> None:
+    """
+    Initialize the weights of the network
+    :param m: The network
+    """
+    classname = m.__class__.__name__
+    if classname.find("Conv") != -1:
+        m.weight.data.normal_(0.0, 0.02)
+    elif classname.find("BatchNorm") != -1:
+        m.weight.data.normal_(1.0, 0.02)
+        m.bias.data.fill_(0)
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--name", type=str, default="Master")
@@ -34,6 +48,17 @@ parser.add_argument("--iid", type=int, default=1)
 parser.add_argument("--seed", type=int, default=1)
 args = parser.parse_args()
 
+os.environ["MASTER_ADDR"] = args.master_addr
+os.environ["MASTER_PORT"] = args.master_port
+os.environ["WORLD_SIZE"] = str(args.world_size)
+os.environ["RANK"] = str(args.rank)
+os.environ["GLOO_SOCKET_IFNAME"] = "en0"
+os.environ["USE_CUDA"] = "0"
+os.environ["GLOO_LOG_LEVEL"] = "DEBUG"
+os.environ["TORCH_CPP_LOG_LEVEL"] = "INFO"
+os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+
 seed_shifted = args.seed + args.rank
 np.random.seed(seed_shifted)
 random.seed(seed_shifted)
@@ -43,97 +68,40 @@ torch.cuda.manual_seed(seed_shifted)
 torch.cuda.manual_seed_all(seed_shifted)
 torch.backends.cudnn.deterministic = True
 
-def verify_imports(imports_options: Dict[str, Any], chosen: str) -> None:
-    if chosen.lower() not in imports_options:
-        raise ValueError(
-            f'Option "{args.dataset}" not available. Choose from {imports_options.keys()}'
-        )
-
-
-def weights_init(m: nn.Module) -> None:
-    classname = m.__class__.__name__
-    if classname.find("Conv") != -1:
-        m.weight.data.normal_(0.0, 0.02)
-    elif classname.find("BatchNorm") != -1:
-        m.weight.data.normal_(1.0, 0.02)
-        m.bias.data.fill_(0)
+log_folder: Path = Path("logs")
+log_folder.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 if __name__ == "__main__":
-    os.environ["MASTER_ADDR"] = args.master_addr
-    os.environ["MASTER_PORT"] = args.master_port
-    os.environ["WORLD_SIZE"] = str(args.world_size)
-    os.environ["RANK"] = str(args.rank)
-    os.environ["GLOO_SOCKET_IFNAME"] = "en0"
-    os.environ["USE_CUDA"] = "0"
+    # Dynamically import the dataset module
+    dataset_module = importlib.import_module(f"datasets.{args.dataset}")
 
-    os.environ["GLOO_LOG_LEVEL"] = "DEBUG"
-    os.environ["TORCH_CPP_LOG_LEVEL"] = "INFO"
-    os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
-    os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+    # Initialize the data partitioner
+    partioner: DataPartitioner = dataset_module.Partitioner
+    partioner = partioner(args.world_size, args.rank)
+    partioner.load_data()
 
-    log_folder: Path = Path("logs")
-    log_folder.mkdir(parents=True, exist_ok=True)
+    # Initialize the generator and discriminator
+    generator: nn.Module = dataset_module.Generator
+    discriminator: nn.Module = dataset_module.Discriminator
 
-    from dataloaders.Cifar10Partitioner import Cifar10Partitioner, cifar10_shape
-    from dataloaders.MnistPartitioner import MnistPartitioner, mnist_shape
-    from dataloaders.CelebaPartitioner import CelebaPartitioner, celeba_shape
+    # Retrieve the image shape and z dimension
+    image_shape: Tuple[int, int, int] = dataset_module.SHAPE
+    z_dim: int = dataset_module.Z_DIM
 
-    from models.CifarDiscriminator import CifarDiscriminator
-    from models.MnistDiscriminator import MnistDiscriminator
-    from models.CelebaDiscriminator import CelebaDiscriminator
-
-    from models.CifarGenerator import CifarGenerator, cifar_z_dim
-    from models.MnistGenerator import MnistGenerator, mnist_z_dim
-    from models.CelebaGenerator import CelebaGenerator, celeba_z_dim
-
-    from actors.server import server
-    from actors.worker import worker
-
-    available_datasets: Dict[str, Tuple[DataPartitioner, int]] = {
-        "cifar": (Cifar10Partitioner, cifar10_shape),
-        "mnist": (MnistPartitioner, mnist_shape),
-        "celeba": (CelebaPartitioner, celeba_shape),
-    }
-
-    available_discriminators: Dict[str, torch.nn.Module] = {
-        "cifar": CifarDiscriminator,
-        "mnist": MnistDiscriminator,
-        "celeba": CelebaDiscriminator,
-    }
-
-    available_generators: Dict[str, torch.nn.Module] = {
-        "cifar": (CifarGenerator, cifar_z_dim),
-        "mnist": (MnistGenerator, mnist_z_dim),
-        "celeba": (CelebaGenerator, celeba_z_dim),
-    }
-
-    verify_imports(available_datasets, args.dataset)
-    verify_imports(available_discriminators, args.model)
-    verify_imports(available_generators, args.model)
-
-    dataset: DataPartitioner = available_datasets[args.dataset][0](
-        args.world_size - 1, args.rank
-    )
-    image_shape = available_datasets[args.dataset][1]
-    dataset.load_data()
-
-    discriminator: torch.nn.Module = available_discriminators[args.model]
-
-    generator: torch.nn.Module = available_generators[args.model][0]
-    z_dim = available_generators[args.model][1]
     # If the rank is greater than 0, we are a worker
     if args.rank > 0:
         # Initialize dataset with world size-1 because the server should not count as a worker
         discriminator = discriminator().to(device=args.device, dtype=torch.float32)
-        discriminator.apply(weights_init)
+        discriminator.apply(_weights_init)
 
-        worker(
+        worker.start(
             backend=args.backend,
             rank=args.rank,
             world_size=args.world_size,
             batch_size=args.batch_size,
             swap_interval=args.swap_interval,
-            data_partitioner=dataset,
+            data_partitioner=partioner,
             epochs=args.epochs,
             discriminator=discriminator,
             device=args.device,
@@ -150,16 +118,16 @@ if __name__ == "__main__":
     else:
         # If the rank is 0, we are the server
         generator = generator().to(device=args.device, dtype=torch.float32)
-        generator.apply(weights_init)
+        generator.apply(_weights_init)
 
-        server(
+        server.start(
             backend=args.backend,
             i=args.rank,
             world_size=args.world_size,
             batch_size=args.batch_size,
             epochs=args.epochs,
             generator=generator,
-            dataset=dataset.train_dataset,
+            dataset=partioner.train_dataset,
             device=args.device,
             image_shape=image_shape,
             generator_lr=args.generator_lr,
