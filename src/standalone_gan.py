@@ -106,8 +106,11 @@ if __name__ == "__main__":
     generator.apply(_weights_init)
     discriminator.apply(_weights_init)
 
+    # Print the summary of the models
+    print(discriminator)
+    print(generator)
+
     # Retrieve the image shape and z dimension
-    image_shape: Tuple[int, int, int] = dataset_module.SHAPE
     z_dim: int = dataset_module.Z_DIM
 
     # Retrieve the arguments of the program
@@ -173,7 +176,7 @@ if __name__ == "__main__":
 
             # Train with fake
             noise = torch.randn(batch_size, z_dim, 1, 1, device=device)
-            fake_images = generator(noise)
+            fake_images: torch.Tensor = generator(noise)
             output: torch.Tensor = discriminator(fake_images.detach())
             errD_fake: torch.Tensor = criterion(output, fake_label)
             errD_fake.backward()

@@ -66,6 +66,8 @@ def start(
     dataset_name: str,
     device: torch.device = torch.device("cpu"),
     z_dim: int = 100,
+    beta_1: float = 0.0,
+    beta_2: float = 0.999,
 ) -> None:
     # Initialize the worker TCP connection
     print(
@@ -112,9 +114,9 @@ def start(
     )
 
     # Initialize the generator loss function and optimizer
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.BCELoss()
     optimizer_discriminator = torch.optim.Adam(
-        discriminator.parameters(), lr=discriminator_lr, betas=(0, 0.999)
+        discriminator.parameters(), lr=discriminator_lr, betas=(beta_1, beta_2)
     )
 
     # Get the ranks of the other workers

@@ -46,6 +46,8 @@ parser.add_argument("--master_addr", type=str, default="localhost")
 parser.add_argument("--master_port", type=str, default="1234")
 parser.add_argument("--iid", type=int, default=1)
 parser.add_argument("--seed", type=int, default=1)
+parser.add_argument("--beta_1", type=float, default=0.0)
+parser.add_argument("--beta_2", type=float, default=0.999)
 args = parser.parse_args()
 
 os.environ["MASTER_ADDR"] = args.master_addr
@@ -89,6 +91,10 @@ if __name__ == "__main__":
     image_shape: Tuple[int, int, int] = dataset_module.SHAPE
     z_dim: int = dataset_module.Z_DIM
 
+    # Print the summary of the models
+    print(discriminator)
+    print(generator)
+
     # If the rank is greater than 0, we are a worker
     if args.rank > 0:
         # Initialize dataset with world size-1 because the server should not count as a worker
@@ -114,6 +120,8 @@ if __name__ == "__main__":
             z_dim=z_dim,
             log_folder=log_folder,
             dataset_name=args.dataset,
+            beta_1=args.beta_1,
+            beta_2=args.beta_2,
         )
     else:
         # If the rank is 0, we are the server

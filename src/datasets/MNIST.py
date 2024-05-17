@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from typing import Tuple
 from torchvision.datasets import MNIST
+from torch.functional import F
 from torchvision import transforms
 from datasets.DataPartitioner import DataPartitioner, _get_partition
 from torchvision.datasets import MNIST
@@ -71,79 +72,49 @@ class Partitioner(DataPartitioner):
 
 
 class Discriminator(nn.Module):
+    """
+    https://github.com/lyeoni/pytorch-mnist-GAN/blob/master/pytorch-mnist-GAN.ipynb
+    """
     def __init__(self):
         super(Discriminator, self).__init__()
-        super().__init__()
-
-        # Discriminator will down-sample the input producing a binary output
-        self.fc1 = nn.Linear(
-            in_features=SHAPE[0] * SHAPE[1] * SHAPE[2], out_features=128
-        )
-        self.leaky_relu1 = nn.LeakyReLU(negative_slope=0.2)
-        self.fc2 = nn.Linear(in_features=128, out_features=64)
-        self.leaky_relu2 = nn.LeakyReLU(negative_slope=0.2)
-        self.fc3 = nn.Linear(in_features=64, out_features=32)
-        self.leaky_relu3 = nn.LeakyReLU(negative_slope=0.2)
-        self.fc4 = nn.Linear(in_features=32, out_features=1)
-        self.dropout = nn.Dropout(0.3)
+        self.fc1 = nn.Linear(SHAPE[0] * SHAPE[1] * SHAPE[2], 1024)
+        self.fc2 = nn.Linear(self.fc1.out_features, self.fc1.out_features//2)
+        self.fc3 = nn.Linear(self.fc2.out_features, self.fc2.out_features//2)
+        self.fc4 = nn.Linear(self.fc3.out_features, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Rehape passed image batch
         batch_size = x.shape[0]
         x = x.view(batch_size, -1)
 
-        # Feed forward
-        x = self.fc1(x)
-        x = self.leaky_relu1(x)
-        x = self.dropout(x)
-        x = self.fc2(x)
-        x = self.leaky_relu2(x)
-        x = self.dropout(x)
-        x = self.fc3(x)
-        x = self.leaky_relu3(x)
-        x = self.dropout(x)
-        logit_out = self.fc4(x)
+        x = F.leaky_relu(self.fc1(x), 0.2)
+        x = F.dropout(x, 0.3)
+        x = F.leaky_relu(self.fc2(x), 0.2)
+        x = F.dropout(x, 0.3)
+        x = F.leaky_relu(self.fc3(x), 0.2)
+        x = F.dropout(x, 0.3)
 
-        return logit_out.flatten()
+        return torch.sigmoid(self.fc4(x)).flatten()
 
 
 class Generator(nn.Module):
+    """
+    https://github.com/lyeoni/pytorch-mnist-GAN/blob/master/pytorch-mnist-GAN.ipynb
+    """
     def __init__(self):
         super(Generator, self).__init__()
 
-        # Generator will up-sample the input producing input of size
-        # suitable for feeding into discriminator
-        self.fc1 = nn.Linear(in_features=Z_DIM, out_features=32)
-        self.relu1 = nn.LeakyReLU(negative_slope=0.2)
-        self.fc2 = nn.Linear(in_features=32, out_features=64)
-        self.relu2 = nn.LeakyReLU(negative_slope=0.2)
-        self.fc3 = nn.Linear(in_features=64, out_features=128)
-        self.relu3 = nn.LeakyReLU(negative_slope=0.2)
-        self.fc4 = nn.Linear(
-            in_features=128, out_features=SHAPE[0] * SHAPE[1] * SHAPE[2]
-        )
-        self.dropout = nn.Dropout(0.3)
-        self.tanh = nn.Tanh()
+        self.fc1 = nn.Linear(Z_DIM, 256)
+        self.fc2 = nn.Linear(self.fc1.out_features, self.fc1.out_features*2)
+        self.fc3 = nn.Linear(self.fc2.out_features, self.fc2.out_features*2)
+        self.fc4 = nn.Linear(self.fc3.out_features, SHAPE[0] * SHAPE[1] * SHAPE[2])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # flatten the input
         batch_size = x.shape[0]
         x = x.view(batch_size, -1)
+        
+        x = F.leaky_relu(self.fc1(x), 0.2)
+        x = F.leaky_relu(self.fc2(x), 0.2)
+        x = F.leaky_relu(self.fc3(x), 0.2)
+        output = torch.tanh(self.fc4(x))
 
-        # Feed forward
-        x = self.fc1(x)
-        x = self.relu1(x)
-        x = self.dropout(x)
-        x = self.fc2(x)
-        x = self.relu2(x)
-        x = self.dropout(x)
-        x = self.fc3(x)
-        x = self.relu3(x)
-        x = self.dropout(x)
-        x = self.fc4(x)
-        tanh_out = self.tanh(x)
-
-        # Reshape to image shape
-        logit_out = tanh_out.view(-1, SHAPE[0], SHAPE[1], SHAPE[2])
-
-        return logit_out
+        return output.view(-1, SHAPE[0], SHAPE[1], SHAPE[2])
