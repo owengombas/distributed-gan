@@ -104,8 +104,8 @@ netD.apply(weights_init)
 criterion = nn.BCELoss()
 
 # setup optimizer
-optimizerD = optim.Adam(netD.parameters(), lr=args.discriminator_lr, betas=(0.5, 0.999))
-optimizerG = optim.Adam(netG.parameters(), lr=args.generator_lr, betas=(0.5, 0.999))
+optimizerD = optim.Adam(netD.parameters(), lr=args.discriminator_lr, betas=(0, 0.999))
+optimizerG = optim.Adam(netG.parameters(), lr=args.generator_lr, betas=(0, 0.999))
 
 fixed_noise = torch.randn(args.batch_size, nz, 1, 1, device=device)
 real_label = 1

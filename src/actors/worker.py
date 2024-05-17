@@ -19,6 +19,12 @@ from torchvision.transforms.functional import to_pil_image
 from datetime import datetime, timedelta
 
 def swap_event(model: torch.nn.Module, rank: int, swap_status: Dict[str, Any]) -> None:
+    """
+    Swap state_dict with another worker
+    :param model: torch.nn.Module the instance of the model to send back to the other worker
+    :param rank: int the rank of the worker to swap with
+    :param swap_status: Dict[str, Any] the status of the swap, the keys are "rank", "state_dict" and "stop"
+    """
     while True:
         if swap_status["stop"]:
             break
@@ -61,6 +67,7 @@ def worker(
     device: torch.device = torch.device("cpu"),
     z_dim: int = 100,
 ) -> None:
+    # Initialize the worker TCP connection
     print(
         f"Worker {rank} starting",
         os.environ.get("MASTER_ADDR"),
@@ -77,6 +84,9 @@ def worker(
     name = f"mdgan.{world_size-1}.{dataset_name}"
     logs_file = log_folder / f"{name}.worker.{rank}.logs.json"
 
+    # Get the indices of the dataset that the server wants the worker to train on
+    # 1. Receive the size of the indices tensor to initialize the tensor which will store the indices
+    # 2. Receive the indices tensor and store it in the indices variable
     indices_size = torch.zeros(1, dtype=torch.int, device=torch.device("cpu"))
     dist.recv(tensor=indices_size, src=0, tag=4)
     logging.info(f"Worker will store {indices_size.item()} entries")
@@ -84,8 +94,10 @@ def worker(
     logging.info(f"Worker {rank} waiting for indices with shape {indices.shape}")
     dist.recv(tensor=indices, src=0, tag=4)
 
+    # Get the subset of the dataset based on the indices the server sent
     partition_train = data_partitioner.get_subset_from_indices(indices, train=True)
 
+    # Create the dataloader to load the real images based on the indices the server sent
     g = torch.Generator()
     g.manual_seed(0)
     dataloader = torch.utils.data.DataLoader(
@@ -99,14 +111,17 @@ def worker(
         f"Worker {rank} with length {len(partition_train)} out of {len(data_partitioner.train_dataset)} ({indices})"
     )
 
+    # Initialize the generator loss function and optimizer
     criterion = nn.BCEWithLogitsLoss()
     optimizer_discriminator = torch.optim.Adam(
         discriminator.parameters(), lr=discriminator_lr, betas=(0, 0.999)
     )
 
+    # Get the ranks of the other workers
     other_workers_rank = list(range(1, world_size))
     other_workers_rank.remove(rank)
 
+    # Start the swap listener threads, one thread for every other worker
     swap_status = {"rank": -1, "state_dict": None, "stop": False}
     threads: List[Thread] = []
     for other_worker in other_workers_rank:
@@ -114,9 +129,22 @@ def worker(
         t.start()
         threads.append(t)
 
+    # Initialize the labels values for the real and fake images
     real_labels = torch.ones(batch_size).to(device)
     fake_labels = torch.zeros(batch_size).to(device)
     logs = []
+
+    # Determine the model size
+    # https://discuss.pytorch.org/t/finding-model-size/130275/2
+    param_size = 0
+    for param in discriminator.parameters():
+        param_size += param.nelement() * param.element_size()
+    buffer_size = 0
+    for buffer in discriminator.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+    model_size_mb = (param_size + buffer_size) / 1024**2
+    logging.info(f"Worker {rank} model size: {model_size_mb} MB")
+
     for epoch in range(epochs):
         logging.info(f"Worker {rank} starting epoch {epoch}")
         current_logs = {
@@ -136,6 +164,8 @@ def worker(
             "recv_swap_from": None,
             "sent_swap_to": None,
             "mean_d_loss": None,
+            "size.data": None,
+            "size.model": model_size_mb,
         }
 
         # Swap state_dict if needed with another worker
@@ -144,19 +174,22 @@ def worker(
             swap_with = swap_status["rank"]
             current_logs["start.recv_swap_from"] = swap_with
             logging.info(f"Worker {rank} swapping state_dict with worker {swap_with}")
+
+            # Load the state_dict from the other worker
             discriminator.load_state_dict(swap_status["state_dict"])
             discriminator = discriminator.to(device)
+
+            # Indicate that the state_dict has been swapped
             swap_status["rank"] = -1
             swap_status["state_dict"] = None
+
             current_logs["end.swap_recv"] = time.time()
-            logging.info(
-                f"Worker {rank} finished swapping state_dict with worker {swap_with}"
-            )
+            logging.info(f"Worker {rank} finished swapping state_dict with worker {swap_with}")
 
         # Get N random samples from the dataset
         real_images = next(iter(dataloader))[0].to(device)
 
-        # Save real images
+        # Save real images, commented because it use compute resources and is not necessary
         # grid = make_grid(
         #     real_images, nrow=4, normalize=True, value_range=(-1, 1), padding=0
         # )
@@ -193,11 +226,14 @@ def worker(
             d_loss = d_loss_real + d_loss_fake
             d_loss.backward()
             optimizer_discriminator.step()
+
+            # Save the loss
             losses[l] = d_loss
 
             logging.info(
                 f"Worker {rank} finished local iteration {l}, discriminator loss {d_loss_real + d_loss_fake}"
             )
+        # Save the mean loss in the logs
         current_logs["mean_d_loss"] = losses.mean().item()
         current_logs["end.calc_gradients"] = time.time()
 
@@ -219,15 +255,18 @@ def worker(
         current_logs["end.send"] = time.time()
         current_logs["end.epoch"] = time.time()
 
+        # Swap state_dict with another worker
         if len(other_workers_rank) > 0:
+            # Formula obtained from the MD-GAN paper
             if epoch % int(len(partition_train) * swap_interval / batch_size) == 0 and epoch > 0:
                 current_logs["start.swap_send"] = time.time()
+
                 # pick a random worker to swap with
                 swap_with = np.random.choice(other_workers_rank)
                 current_logs["sent_swap_to"] = swap_with
                 logging.info(f"Worker {rank} picked worker {swap_with} to swap with")
 
-                # Send the state_dict to the other worker
+                # Send the state_dict to the other worker using TensorDict
                 state_dict = discriminator.cpu().state_dict()
                 current_state_dict: TensorDict = TensorDict(
                     state_dict, batch_size=[]

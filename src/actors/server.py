@@ -19,7 +19,12 @@ from torchmetrics.image.inception import InceptionScore
 save_dir: Path = Path("saved_images")
 
 def compute_fid_score(fake_images: torch.Tensor, real_images: torch.Tensor) -> float:
-    # Compute Frechet Inception Distance
+    """
+    Compute the Frechet Inception Distance between the fake and real images
+    :param fake_images: The generated images
+    :param real_images: The real images
+    :return: The FID score
+    """
     fid = FrechetInceptionDistance(normalize=True)
     fid.update(fake_images, real=False)
     fid.update(real_images, real=True)
@@ -29,7 +34,12 @@ def compute_fid_score(fake_images: torch.Tensor, real_images: torch.Tensor) -> f
     return fid_score.item()
 
 
-def compute_inception_score(generated_images: torch.Tensor,) -> float:
+def compute_inception_score(generated_images: torch.Tensor) -> float:
+    """
+    Compute the Inception score for the generated images
+    :param generated_images: The generated images
+    :return: The Inception score
+    """
     logging.info(f"Computing Inception score")
     metric = InceptionScore(normalize=True, splits=1)
     metric.update(generated_images)
@@ -78,6 +88,7 @@ def server(
     n_samples: int = 5,
     iid: bool = True,
 ):
+    # Initialize the process group (TCP)
     dist.init_process_group(
         backend=backend,
         rank=i,
@@ -90,37 +101,46 @@ def server(
     log_file: Path = log_folder / f"{name}.server.logs.json"
     logs = []
 
+    # Initialize the generator, notice that the server do not hold a loss function
     optimizer = torch.optim.Adam(
         generator.parameters(), lr=generator_lr, betas=(0, 0.999)
     )
 
+    # N is the number of workers, world_size includes the server
     N = world_size - 1
+
+    # K is the number of data batch the generator will generate for every epoch, many workers will therefore use the same data
+    # since K < N
     K = math.floor(math.log2(N))
     logging.info(f"Server {i} has {N} workers and K={K}")
 
+    # Create a random batch of real images to compute FID and IS scores
+    # it can remain constant
     g = torch.Generator()
     g.manual_seed(0)
     data_loader = torch.utils.data.DataLoader(
         dataset, batch_size=n_samples, shuffle=True, generator=g
     )
-
     real_images: torch.Tensor = next(iter(data_loader))[0].cpu()
+    # If the images are grayscale, repeat the images to have 3 channels (torchmetrics requires 3 channels images)
     if real_images.shape[1] < 3:
         real_images = real_images.repeat(1, 3, 1, 1)
+    # Normalize the images from 0 to 1 insatead of -1 to 1
     real_images = (real_images + 1) * 0.5
-
     grid_real = make_grid(
         real_images.to(dtype=torch.float32), nrow=4, normalize=True, value_range=(0, 1), padding=0
     )
     # Convert the grid to a PIL image
     grid_pil = to_pil_image(grid_real)
-    # Create the save directory if it doesn't exist
+    # Create the save directory if it doesn't exist and save the grid
     Path(save_dir).mkdir(parents=True, exist_ok=True)
     grid_path = Path(save_dir) / f"real_images.png"
     grid_pil.save(grid_path)
 
+    # Split the dataset into N parts in a IID or non-IID manner
     list_of_indices = split_dataset(len(dataset), world_size - 1, iid=iid, generator=g)
     logging.info(f"Server {i} split the dataset into {len(list_of_indices)} parts")
+    # Send the indices to the workers to inform them about the data they will use
     for i, indices in enumerate(list_of_indices):
         dist.send(
             tensor=torch.tensor(
@@ -133,7 +153,8 @@ def server(
         logging.info(
             f"Server {i} sent indices to worker {i + 1} with shape {indices.shape}"
         )
-    
+
+    # Create the save directory if it doesn't exist
     weights_path = Path("weights")
 
     generator.train()
@@ -148,6 +169,8 @@ def server(
             "end.epoch_calculation": None,
             "start.send_data": None,
             "end.send_data": None,
+            "start.recv_data": None,
+            "end.recv_data": None,
             "start.calc_gradients": None,
             "end.calc_gradients": None,
             "start.apply_gradients": None,
@@ -160,9 +183,12 @@ def server(
             "end.fid": None,
             "start.is": None,
             "end.is": None,
+            "size.data": None,
+            "size.feedback": None,
         }
 
         current_logs["start.generate_data"] = time.time()
+        # Generate K batches of data
         seed = torch.randn((2 * K * batch_size, z_dim, 1, 1), device=device)
         X: torch.tensor = generator(seed).to(device=device)
         X_gs = [X[(k + 1) * batch_size : (k + 2) * batch_size] for k in range(K)]
@@ -173,24 +199,38 @@ def server(
         reqs_send: List[Future] = []
         reqs_recv: List[Future] = []
         for i in range(N):
+            # Get ready to receive feedback from the worker
             logging.info(f"Server receiving feedback from worker {i+1}")
             req = dist.irecv(tensor=feedbacks[i], src=i+1, tag=3)
             reqs_recv.append(req)
 
+            # Send the generated data to the worker
             k = i % K
             t_n: torch.Tensor = (X[k * batch_size : (k + 2) * batch_size]).clone().detach().cpu()
             logging.info(
                 f"Server sending generated data {k} with shape {t_n.shape} to worker {i+1}"
             )
+            current_logs["size.data"] = t_n.element_size() * t_n.nelement()
             req = dist.isend(tensor=t_n, dst=i+1, tag=1)
             reqs_send.append(req)
             logging.info(f"Server sent data to worker {i}")
-        logging.info(f"Server sent data to all workers")
+
+        # Wait for all the data to be sent
         for i in range(N):
             reqs_send[i].wait()
-            reqs_recv[i].wait()
-        feedbacks = feedbacks.to(device=device)
         current_logs["end.send_data"] = time.time()
+        logging.info(f"Server sent data to all workers")
+
+        # Wait for all the feedback to be received
+        current_logs["start.recv_data"] = time.time()
+        for i in range(N):
+            reqs_recv[i].wait()
+        current_logs["end.recv_data"] = time.time()
+        logging.info(f"Server received feedback from all workers")
+        current_logs["size.feedback"] = feedbacks.element_size() * feedbacks.nelement()
+
+        # Migrate the feedbacks to the device (could be the GPU, the gloo backend enforce to receive on CPU)
+        feedbacks = feedbacks.to(device=device)
 
         current_logs["start.calc_gradients"] = time.time()
         # Precompute some constants
