@@ -9,6 +9,12 @@ port=1234
 swap_interval=100
 master_addr=localhost
 master_port=1234
+n_workers=$(($world_size-1))
+
+if [ $(($n_workers%2)) -ne 0 ]; then
+    echo "Number of workers must be even, change the world_size to have consider an even number of workers (3, 5, 7, ...)"
+    exit 1
+fi
 
 client_start=${1:-0}
 client_end=${2:-4}
