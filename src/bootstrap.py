@@ -91,10 +91,6 @@ if __name__ == "__main__":
     image_shape: Tuple[int, int, int] = dataset_module.SHAPE
     z_dim: int = dataset_module.Z_DIM
 
-    # Print the summary of the models
-    print(discriminator)
-    print(generator)
-
     # If the rank is greater than 0, we are a worker
     if args.rank > 0:
         # Initialize dataset with world size-1 because the server should not count as a worker
@@ -130,7 +126,7 @@ if __name__ == "__main__":
 
         server.start(
             backend=args.backend,
-            i=args.rank,
+            rank=args.rank,
             world_size=args.world_size,
             batch_size=args.batch_size,
             epochs=args.epochs,
@@ -144,4 +140,5 @@ if __name__ == "__main__":
             log_folder=log_folder,
             iid=args.iid == 1,
             dataset_name=args.dataset,
+            swap_interval=args.swap_interval,
         )

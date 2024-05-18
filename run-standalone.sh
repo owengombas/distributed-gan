@@ -1,5 +1,5 @@
 #!/bin/bash
-. ./set-args.sh
+. ./shared-args.sh
 cd src
 
 seed=1

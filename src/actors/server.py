@@ -48,7 +48,7 @@ def _compute_inception_score(generated_images: torch.Tensor) -> torch.Tensor:
 
 
 def _split_dataset(
-    dataset_size: int, world_size: int, iid: bool = False, generator: torch.Generator = torch.Generator()
+    dataset_size: int, world_size: int, iid: bool = False, generator: torch.Generator = torch.Generator(), device: torch.device = torch.device("cpu")
 ) -> List[torch.Tensor]:
     """
     Split the dataset into N parts, where N is the number of workers.
@@ -60,9 +60,9 @@ def _split_dataset(
     :return: A list of tensors, each tensor hold the indices of the dataset for each worker
     """
     if iid:
-        indices = torch.randperm(dataset_size, device=torch.device("cpu"), generator=generator)
+        indices = torch.randperm(dataset_size, device=device, generator=generator)
     else:
-        indices = torch.arange(dataset_size, device=torch.device("cpu"))
+        indices = torch.arange(dataset_size, device=device)
     # Split the dataset into N parts
     split_indices = torch.chunk(indices, world_size)
     return split_indices
@@ -70,7 +70,7 @@ def _split_dataset(
 
 def start(
     backend: str,
-    i: int,
+    rank: int,
     generator_lr: float,
     world_size: int,
     batch_size: int,
@@ -85,15 +85,26 @@ def start(
     device: torch.device = torch.device("cpu"),
     n_samples: int = 5,
     iid: bool = True,
+    swap_interval: int = 1,
 ):
     # Initialize the process group (TCP)
     dist.init_process_group(
         backend=backend,
-        rank=i,
+        rank=rank,
         world_size=world_size,
         timeout=timedelta(weeks=52),
     )
-    logging.info(f"Server {i} initialized")
+
+    # Define the communication device
+    communication_device = torch.device("cpu")
+    if backend == "gloo":
+        communication_device = torch.device("cpu")
+    elif backend == "nccl" and torch.cuda.is_available():
+        communication_device = torch.device("cuda")
+
+    logging.info(f"Server {rank} initialized, communication device: {communication_device}")
+    print(generator)
+
 
     image_save_dir: Path = Path("saved_images")
     name = f"mdgan.{world_size-1}.{dataset_name}"
@@ -110,8 +121,8 @@ def start(
 
     # K is the number of data batch the generator will generate for every epoch, many workers will therefore use the same data
     # since K < N
-    K = math.floor(math.log2(N))
-    logging.info(f"Server {i} has {N} workers and K={K}")
+    k = math.floor(math.log2(N))
+    logging.info(f"Server {rank} has {N} workers and K={k}")
 
     # Create a random batch of real images to compute FID and IS scores
     # it can remain constant
@@ -137,33 +148,32 @@ def start(
     grid_pil.save(grid_path)
 
     # Split the dataset into N parts in a IID or non-IID manner
-    list_of_indices = _split_dataset(len(dataset), world_size - 1, iid=iid, generator=g)
-    logging.info(f"Server {i} split the dataset into {len(list_of_indices)} parts")
+    list_of_indices = _split_dataset(len(dataset), world_size - 1, iid=iid, generator=g, device=communication_device)
+    logging.info(f"Server {rank} split the dataset into {len(list_of_indices)} parts")
     # Send the indices to the workers to inform them about the data they will use
-    for i, indices in enumerate(list_of_indices):
+    for n, indices in enumerate(list_of_indices):
         dist.send(
             tensor=torch.tensor(
-                len(indices), device=torch.device("cpu"), dtype=torch.int
+                len(indices), device=communication_device, dtype=torch.int
             ),
-            dst=i + 1,
-            tag=4,
+            dst=n + 1,
         )
-        dist.send(tensor=indices, dst=i + 1, tag=4)
+        dist.send(tensor=indices, dst=n + 1)
         logging.info(
-            f"Server {i} sent indices to worker {i + 1} with shape {indices.shape}"
+            f"Server sent indices to worker {n + 1} with shape {indices.shape}"
         )
 
     # Create the save directory if it doesn't exist
     weights_path = Path("weights")
 
     generator.train()
-    feedbacks = torch.zeros((N, batch_size, *image_shape), device="cpu", requires_grad=True, dtype=torch.float32)
-    size_feedback = feedbacks.element_size() * feedbacks.nelement() / 1e6 # in MB
+    feedbacks = torch.zeros((N, batch_size, *image_shape), device=communication_device, requires_grad=True, dtype=torch.float32)
+    size_feedback = feedbacks.element_size() * feedbacks.nelement() / 1024**2 # in MB
 
-    fake_data = torch.zeros((2 * K * batch_size, *image_shape), device="cpu", dtype=torch.float32)
-    size_fake_data = 2 * K * batch_size * (fake_data.element_size() * fake_data.nelement()) / 1e6 # in MB
+    fake_data = torch.zeros((2 * batch_size, *image_shape), device=communication_device, dtype=torch.float32)
+    size_fake_data = 2 * batch_size * (fake_data.element_size() * fake_data.nelement()) / 1024**2 # in MB
     for epoch in range(epochs):
-        logging.info(f"Server {i} starting epoch {epoch}")
+        logging.info(f"Server {rank} starting epoch {epoch}")
         current_logs = {
             "epoch": epoch,
             "start.epoch": time.time(),
@@ -188,47 +198,59 @@ def start(
             "end.is": None,
             "size.data": size_fake_data,
             "size.feedback": size_feedback,
+            "start.swap": None,
+            "end.swap": None,
+            "swap": False,
+            "size.sent": 0,
+            "size.recv": 0,
         }
 
         current_logs["start.generate_data"] = time.time()
         # Generate K batches of data
-        seed = torch.randn((2 * K * batch_size, z_dim, 1, 1), device=device)
+        seed = torch.randn((k * batch_size, z_dim, 1, 1), device=device)
         X: torch.tensor = generator(seed).to(device=device)
-        X_gs = [X[(k + 1) * batch_size : (k + 2) * batch_size] for k in range(K)]
+        K = torch.split(X, batch_size, dim=0)
+        logging.info(f"Server {rank} generated {len(K)} batches of data")
         current_logs["end.generate_data"] = time.time()
 
         current_logs["start.send_data"] = time.time()
-        feedbacks = feedbacks.to(device="cpu")
+        feedbacks = feedbacks.to(device=communication_device)
         reqs_send: List[Future] = []
         reqs_recv: List[Future] = []
-        for i in range(N):
+        for n in range(N):
             # Get ready to receive feedback from the worker
-            logging.info(f"Server receiving feedback from worker {i+1}")
-            req = dist.irecv(tensor=feedbacks[i], src=i+1, tag=3)
+            logging.info(f"Server {rank} receiving feedback from worker {n+1}")
+            req = dist.irecv(tensor=feedbacks[n], src=n+1)
             reqs_recv.append(req)
 
             # Send the generated data to the worker
-            k = i % K
-            t_n: torch.Tensor = (X[k * batch_size : (k + 2) * batch_size]).clone().detach().cpu()
+            X_g = K[n % k]
+            X_d = K[(n + 1) % k]
+
+            # Concatenate the generated data with the feedback
+            t_n = torch.cat([X_g, X_d], dim=0)
+            t_n = t_n.to(device=communication_device)
             logging.info(
-                f"Server sending generated data {k} with shape {t_n.shape} to worker {i+1}"
+                f"Server {rank} sending generated data with shape {t_n.shape} to worker {n+1}"
             )
-            req = dist.isend(tensor=t_n, dst=i+1, tag=1)
+            req = dist.isend(tensor=t_n, dst=n+1)
             reqs_send.append(req)
-            logging.info(f"Server sent data to worker {i}")
+            current_logs["size.sent"] += t_n.element_size() * t_n.nelement() / 1024**2 # in MB
+            logging.info(f"Server {rank} sent data to worker {n}")
 
         # Wait for all the data to be sent
-        for i in range(N):
-            reqs_send[i].wait()
+        for n in range(N):
+            reqs_send[n].wait()
         current_logs["end.send_data"] = time.time()
-        logging.info(f"Server sent data to all workers")
+        logging.info(f"Server {rank} sent data to all workers")
 
         # Wait for all the feedback to be received
         current_logs["start.recv_data"] = time.time()
-        for i in range(N):
-            reqs_recv[i].wait()
+        for n in range(N):
+            reqs_recv[n].wait()
         current_logs["end.recv_data"] = time.time()
-        logging.info(f"Server received feedback from all workers")
+        current_logs["size.recv"] = feedbacks.element_size() * feedbacks.nelement() / 1024**2 # in MB
+        logging.info(f"Server {rank} received feedback from all workers")
 
         # Migrate the feedbacks to the device (could be the GPU, the gloo backend enforce to receive on CPU)
         feedbacks = feedbacks.to(device=device)
@@ -244,14 +266,13 @@ def start(
         ]
 
         # Pre-compute gradients for all feedbacks in a batch
-        for i in range(N):
-            k = i % K
-            X_g = X_gs[k]
+        for n in range(N):
+            X_g = K[n % k]
 
             # Compute gradients for the entire batch at once if possible
             # Flatten X_g and feedback to match the batch dimensions if necessary
             batched_X_g = torch.cat([x_i.unsqueeze(0) for x_i in X_g], dim=0)
-            batched_feedback = torch.cat([e_i.unsqueeze(0) for e_i in feedbacks[i]], dim=0)
+            batched_feedback = torch.cat([e_i.unsqueeze(0) for e_i in feedbacks[n]], dim=0)
 
             # Calculate gradients for the whole batch
             batch_grads = torch.autograd.grad(
@@ -272,7 +293,7 @@ def start(
             g * inverse_batch_size_N for g in grads_sum
         ]
         current_logs["end.calc_gradients"] = time.time()
-        logging.info(f"Server aggregated the gradients from all workers")
+        logging.info(f"Server {rank} aggregated the gradients from all workers")
 
         current_logs["start.apply_gradients"] = time.time()
         # Apply the aggregated gradients to the generator
@@ -283,6 +304,26 @@ def start(
         optimizer.step()
         current_logs["end.apply_gradients"] = time.time()
 
+        if N > 1:
+            # Formula obtained from the MD-GAN paper
+            if epoch % swap_interval == 0 and epoch > 0:
+                current_logs["swap"] = True
+                current_logs["start.swap"] = time.time()
+                # Create random non-overlapping pairs of workers
+                pairs = torch.randperm(N, device=communication_device, dtype=torch.int).view(-1, 2)
+                # Send the pairs to the workers
+                for pair in pairs:
+                    pair = pair + 1
+
+                    req1 = dist.isend(tensor=pair[0], dst=pair[1])
+                    req2 = dist.isend(tensor=pair[1], dst=pair[0])
+                    current_logs["size.sent"] += 2 * pair.element_size() / 1024**2 # in MB
+
+                    logging.info(f"Server {rank} choosed to swap workers {pair[0]} and {pair[1]}")
+                    req1.wait()
+                    req2.wait()
+                current_logs["end.swap"] = time.time()
+
         current_logs["end.epoch_calculation"] = time.time()
         if epoch % log_interval == 0 or epoch == epochs - 1:
             fake_images = X.detach().cpu()
@@ -290,7 +331,6 @@ def start(
                 fake_images = fake_images.repeat(1, 3, 1, 1)
             # normalize the images from 0 to 255
             fake_images = (fake_images + 1) * 0.5
-            logging.info(f"Server {fake_images.shape} generated images")
 
             grid_fake = make_grid(
                 fake_images, nrow=4, value_range=(0, 1), padding=0
