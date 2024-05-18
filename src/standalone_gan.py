@@ -31,7 +31,7 @@ def _weights_init(m: nn.Module) -> None:
 
 
 def _compute_fid_score(
-    real_images: torch.Tensor, fake_images: torch.Tensor
+    real_images: torch.Tensor, fake_images: torch.Tensor, device: torch.device = torch.device("cpu")
 ) -> torch.Tensor:
     """
     Compute the Frechet Inception Distance
@@ -39,19 +39,19 @@ def _compute_fid_score(
     :param fake_images: The generated images
     :return: The Frechet Inception Distance
     """
-    fid = FrechetInceptionDistance(normalize=True)
+    fid = FrechetInceptionDistance(normalize=True).to(device)
     fid.update(real_images, real=True)
     fid.update(fake_images, real=False)
     return fid.compute()
 
 
-def _compute_inception_score(fake_images: torch.Tensor) -> torch.Tensor:
+def _compute_inception_score(fake_images: torch.Tensor, device: torch.device = torch.device("cpu")) -> torch.Tensor:
     """
     Compute the inception score
     :param fake_images: The generated images
     :return: The inception score
     """
-    inception = InceptionScore(normalize=True, splits=1)
+    inception = InceptionScore(normalize=True, splits=1).to(device)
     inception.update(fake_images)
     return inception.compute()[0]
 
@@ -138,6 +138,11 @@ if __name__ == "__main__":
     g_loss: List[float] = []
     d_loss: List[float] = []
 
+    # Determine the evaluation device
+    evaluation_device = torch.device("cpu")
+    if torch.cuda.is_available():
+        evaluation_device = torch.device("cuda")
+
     image_output_path: Path = Path("saved_images_standalone")
     weights_output_path: Path = Path("weights")
     logs_output_path: Path = Path("logs")
@@ -212,8 +217,8 @@ if __name__ == "__main__":
                 real_images = real_images.repeat(1, 3, 1, 1)
 
             # FID and IS are performed on CPU
-            real_images = real_images[: args.n_samples_fid].to(device="cpu")
-            fake_images = fake_images[: args.n_samples_fid].to(device="cpu")
+            real_images = real_images[: args.n_samples_fid].to(device=evaluation_device)
+            fake_images = fake_images[: args.n_samples_fid].to(device=evaluation_device)
 
             # Save the images to check the progress of the generator
             image_output_path.mkdir(parents=True, exist_ok=True)
@@ -225,12 +230,12 @@ if __name__ == "__main__":
 
             # Compute FID and IS
             current_logs["start.fid"] = time.time()
-            fid_score = _compute_fid_score(real_images, fake_images).item()
+            fid_score = _compute_fid_score(real_images, fake_images, evaluation_device).item()
             current_logs["end.fid"] = time.time()
             current_logs["fid"] = fid_score
 
             current_logs["start.is"] = time.time()
-            inception_score = _compute_inception_score(fake_images).item()
+            inception_score = _compute_inception_score(fake_images, evaluation_device).item()
             current_logs["end.is"] = time.time()
             current_logs["is"] = inception_score
 
@@ -245,5 +250,6 @@ if __name__ == "__main__":
             json.dump(logs, f)
 
         # Check pointing for every epoch
+        weights_output_path.mkdir(parents=True, exist_ok=True)
         torch.save(generator.state_dict(), weights_output_path / f"netG_epoch_{epoch}.pth")
         torch.save(discriminator.state_dict(), weights_output_path / f"netD_epoch_{epoch}.pth")

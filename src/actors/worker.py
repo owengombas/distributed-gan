@@ -51,12 +51,11 @@ def start(
         world_size=world_size,
         timeout=timedelta(weeks=52),
     )
+    dist.barrier()
 
     # Determine the communication device
     communication_device = torch.device("cpu")
-    if backend == "gloo":
-        communication_device = torch.device("cpu")
-    elif backend == "nccl" and torch.cuda.is_available():
+    if backend == "nccl" and torch.cuda.is_available():
         communication_device = torch.device("cuda")
 
     logging.info(

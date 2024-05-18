@@ -1,5 +1,7 @@
 import math
 from typing import List, Tuple
+
+import torch.cuda
 import torch.distributed as dist
 import torch
 from torch.futures import Future
@@ -16,35 +18,30 @@ from datetime import datetime, timedelta
 from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.inception import InceptionScore
 
-def _compute_fid_score(fake_images: torch.Tensor, real_images: torch.Tensor) -> torch.Tensor:
+def _compute_fid_score(
+    real_images: torch.Tensor, fake_images: torch.Tensor, device: torch.device = torch.device("cpu")
+) -> torch.Tensor:
     """
-    Compute the Frechet Inception Distance between the fake and real images
-    :param fake_images: The generated images
+    Compute the Frechet Inception Distance
     :param real_images: The real images
-    :return: The FID score
+    :param fake_images: The generated images
+    :return: The Frechet Inception Distance
     """
-    fid = FrechetInceptionDistance(normalize=True)
-    fid.update(fake_images, real=False)
+    fid = FrechetInceptionDistance(normalize=True).to(device)
     fid.update(real_images, real=True)
-    fid_score = FrechetInceptionDistance.compute(fid)
-    logging.info(f"Server computed FID score: {fid_score}")
-
-    return fid_score
+    fid.update(fake_images, real=False)
+    return FrechetInceptionDistance.compute(fid)
 
 
-def _compute_inception_score(generated_images: torch.Tensor) -> torch.Tensor:
+def _compute_inception_score(fake_images: torch.Tensor, device: torch.device = torch.device("cpu")) -> torch.Tensor:
     """
-    Compute the Inception score for the generated images
-    :param generated_images: The generated images
-    :return: The Inception score
+    Compute the inception score
+    :param fake_images: The generated images
+    :return: The inception score
     """
-    logging.info(f"Computing Inception score")
-    metric = InceptionScore(normalize=True, splits=1)
-    metric.update(generated_images)
-    scores = InceptionScore.compute(metric)
-    mean_score = scores[0]
-    logging.info(f"Server computed Inception score: {mean_score}")
-    return mean_score
+    inception = InceptionScore(normalize=True, splits=1).to(device)
+    inception.update(fake_images)
+    return InceptionScore.compute(inception)[0]
 
 
 def _split_dataset(
@@ -94,12 +91,11 @@ def start(
         world_size=world_size,
         timeout=timedelta(weeks=52),
     )
+    dist.barrier()
 
     # Define the communication device
     communication_device = torch.device("cpu")
-    if backend == "gloo":
-        communication_device = torch.device("cpu")
-    elif backend == "nccl" and torch.cuda.is_available():
+    if backend == "nccl" and torch.cuda.is_available():
         communication_device = torch.device("cuda")
 
     logging.info(f"Server {rank} initialized, communication device: {communication_device}")
@@ -124,6 +120,11 @@ def start(
     k = math.floor(math.log2(N))
     logging.info(f"Server {rank} has {N} workers and K={k}")
 
+    # Determine the evaluation device
+    evaluation_device = torch.device("cpu")
+    if torch.cuda.is_available():
+        evaluation_device = torch.device("cuda")
+
     # Create a random batch of real images to compute FID and IS scores
     # it can remain constant
     g = torch.Generator()
@@ -131,7 +132,7 @@ def start(
     data_loader = torch.utils.data.DataLoader(
         dataset, batch_size=n_samples, shuffle=True, generator=g
     )
-    real_images: torch.Tensor = next(iter(data_loader))[0].cpu()
+    real_images: torch.Tensor = next(iter(data_loader))[0].to(device=evaluation_device)
     # If the images are grayscale, repeat the images to have 3 channels (torchmetrics requires 3 channels images)
     if real_images.shape[1] < 3:
         real_images = real_images.repeat(1, 3, 1, 1)
@@ -148,7 +149,9 @@ def start(
     grid_pil.save(grid_path)
 
     # Split the dataset into N parts in a IID or non-IID manner
-    list_of_indices = _split_dataset(len(dataset), world_size - 1, iid=iid, generator=g, device=communication_device)
+    device_generator = torch.Generator(device=communication_device)
+    device_generator.manual_seed(0)
+    list_of_indices = _split_dataset(len(dataset), world_size - 1, iid=iid, generator=device_generator, device=communication_device)
     logging.info(f"Server {rank} split the dataset into {len(list_of_indices)} parts")
     # Send the indices to the workers to inform them about the data they will use
     for n, indices in enumerate(list_of_indices):
@@ -165,7 +168,6 @@ def start(
 
     # Create the save directory if it doesn't exist
     weights_path = Path("weights")
-
     generator.train()
     feedbacks = torch.zeros((N, batch_size, *image_shape), device=communication_device, requires_grad=True, dtype=torch.float32)
     size_feedback = feedbacks.element_size() * feedbacks.nelement() / 1024**2 # in MB
@@ -326,7 +328,7 @@ def start(
 
         current_logs["end.epoch_calculation"] = time.time()
         if epoch % log_interval == 0 or epoch == epochs - 1:
-            fake_images = X.detach().cpu()
+            fake_images = X.detach()
             if fake_images.shape[1] < 3:
                 fake_images = fake_images.repeat(1, 3, 1, 1)
             # normalize the images from 0 to 255
@@ -342,15 +344,15 @@ def start(
             grid_path = Path(image_save_dir) / f"generated_epoch_{epoch}.png"
             grid_pil.save(grid_path)
 
-            fake_images = fake_images[:min(n_samples, len(fake_images))]
+            fake_images = fake_images[:min(n_samples, len(fake_images))].to(device=evaluation_device)
 
             current_logs["start.is"] = time.time()
-            is_score = _compute_inception_score(fake_images)
+            is_score = _compute_inception_score(fake_images, evaluation_device)
             current_logs["end.is"] = time.time()
             current_logs["is"] = is_score.item()
 
             current_logs["start.fid"] = time.time()
-            fid_score = _compute_fid_score(fake_images, real_images)
+            fid_score = _compute_fid_score(fake_images, real_images, evaluation_device)
             current_logs["end.fid"] = time.time()
             current_logs["fid"] = fid_score.item()
 

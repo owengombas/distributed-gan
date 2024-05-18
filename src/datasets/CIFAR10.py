@@ -10,6 +10,7 @@ SHAPE: Tuple[int, int, int] = (3, 32, 32)
 NDF: int = 64
 NGF: int = 64
 Z_DIM: int = 100
+NGPU: int = 1
 
 
 class Partitioner(DataPartitioner):
@@ -97,8 +98,8 @@ class Discriminator(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        if input.is_cuda and self.ngpu > 1:
-            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+        if input.is_cuda and NGPU > 1:
+            output = nn.parallel.data_parallel(self.main, input, range(NGPU))
         else:
             output = self.main(input)
 
@@ -132,8 +133,8 @@ class Generator(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        if input.is_cuda and self.ngpu > 1:
-            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+        if input.is_cuda and NGPU > 1:
+            output = nn.parallel.data_parallel(self.main, input, range(NGPU))
         else:
             output = self.main(input)
         return output
