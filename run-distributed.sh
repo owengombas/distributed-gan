@@ -12,7 +12,6 @@ master_port=1234
 network_interface=lo
 
 python bootstrap.py \
-    --name "Server" \
     --backend $backend \
     --port $port \
     --world_size $world_size \
