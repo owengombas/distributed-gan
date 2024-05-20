@@ -28,12 +28,11 @@ def _weights_init(m: nn.Module) -> None:
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--name", type=str, default="Master")
 parser.add_argument("--backend", type=str, default="nccl")
 parser.add_argument("--port", type=int, default=12345)
 parser.add_argument("--world_size", type=int, default=2)
 parser.add_argument("--dataset", type=str, default="cifar")
-parser.add_argument("--ranks", type=str, default="0,1")
+parser.add_argument("--ranks", type=str, default="0,1,2")
 parser.add_argument("--epochs", type=int, default=10)
 parser.add_argument("--swap_interval", type=int, default=1)
 parser.add_argument("--local_epochs", type=int, default=10)
@@ -154,9 +153,12 @@ if __name__ == "__main__":
     else:
         raise ValueError("Invalid rank format")
 
-    logging.info(f"Ranks: {ranks}")
+    logging.info(f"{len(ranks)} ranks: {', '.join([str(rank) for rank in ranks])}")
 
-    if (len(ranks) - 1) % 2 != 0:
+    n_workers = len(ranks)
+    if 0 in ranks:
+        n_workers -= 1
+    if n_workers % 2 != 0:
         raise ValueError("The number of workers should be even")
 
     # Dynamically import the dataset module

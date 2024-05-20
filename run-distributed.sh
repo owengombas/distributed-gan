@@ -3,7 +3,7 @@
 cd src
 
 seed=3
-world_size=5
+world_size=13
 backend=gloo
 port=1234
 swap_interval=100
