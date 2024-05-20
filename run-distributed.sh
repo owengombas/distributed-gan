@@ -5,15 +5,13 @@ cd src
 seed=3
 world_size=13
 backend=gloo
-port=1234
 swap_interval=100
 master_addr=localhost
 master_port=1234
-network_interface=lo
+# network_interface=
 
 python bootstrap.py \
     --backend $backend \
-    --port $port \
     --world_size $world_size \
     --dataset $dataset \
     --ranks $1 \
@@ -30,7 +28,6 @@ python bootstrap.py \
     --seed $seed \
     --master_addr $master_addr \
     --master_port $master_port \
-    --network_interface $network_interface \
     --log_interval $log_interval &
 
 # Enable CTRL+C to stop all background processes

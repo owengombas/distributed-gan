@@ -29,7 +29,6 @@ def _weights_init(m: nn.Module) -> None:
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--backend", type=str, default="nccl")
-parser.add_argument("--port", type=int, default=12345)
 parser.add_argument("--world_size", type=int, default=2)
 parser.add_argument("--dataset", type=str, default="cifar")
 parser.add_argument("--ranks", type=str, default="0,1,2")
@@ -45,7 +44,7 @@ parser.add_argument("--discriminator_lr", type=float, default=0.004)
 parser.add_argument("--device", type=str, default="cpu")
 parser.add_argument("--master_addr", type=str, default="localhost")
 parser.add_argument("--master_port", type=str, default="1234")
-parser.add_argument("--network_interface", type=str, default="en0")
+parser.add_argument("--network_interface", type=str, required=False)
 parser.add_argument("--iid", type=int, default=1)
 parser.add_argument("--seed", type=int, default=1)
 parser.add_argument("--beta_1", type=float, default=0.0)
@@ -58,6 +57,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 def run(rank: int, args: argparse.Namespace, partioner: DataPartitioner, image_shape: Tuple[int, int, int], z_dim: int, generator: nn.Module, discriminator: nn.Module) -> None:
     # If the rank is greater than 0, we are a worker
+    logging.info(f"Starting up process for node: {rank}")
     if rank > 0:
         # Initialize dataset with world size-1 because the server should not count as a worker
         discriminator = discriminator().to(device=args.device, dtype=torch.float32)
@@ -121,8 +121,9 @@ def init_process(local_rank: int, args: argparse.Namespace, ranks: List[int], pa
     os.environ["MASTER_PORT"] = args.master_port
     os.environ["WORLD_SIZE"] = str(args.world_size)
     os.environ["RANK"] = str(rank)
-    os.environ["GLOO_SOCKET_IFNAME"] = args.network_interface
-    os.environ["NCCL_SOCKET_IFNAME"] = args.network_interface
+    if args.network_interface:
+        os.environ["GLOO_SOCKET_IFNAME"] = args.network_interface
+        os.environ["NCCL_SOCKET_IFNAME"] = args.network_interface
     os.environ["USE_CUDA"] = "1"
     os.environ["NCCL_DEBUG"] = "TRACE"
     os.environ["GLOO_LOG_LEVEL"] = "DEBUG"
@@ -150,16 +151,15 @@ if __name__ == "__main__":
         ranks = list(range(int(start), int(end) + 1))
     elif "," in args.ranks:
         ranks = [int(rank) for rank in args.ranks.split(",")]
+    elif args.ranks.isdigit():
+        ranks = [int(args.ranks)]
     else:
         raise ValueError("Invalid rank format")
 
     logging.info(f"{len(ranks)} ranks: {', '.join([str(rank) for rank in ranks])}")
 
-    n_workers = len(ranks)
-    if 0 in ranks:
-        n_workers -= 1
-    if n_workers % 2 != 0:
-        raise ValueError("The number of workers should be even")
+    if args.world_size % 2 == 0:
+        raise ValueError("World size must be odd")
 
     # Dynamically import the dataset module
     dataset_module = importlib.import_module(f"datasets.{args.dataset}")
