@@ -55,6 +55,19 @@ log_folder: Path = Path("logs")
 log_folder.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
+os.environ["MASTER_ADDR"] = args.master_addr
+os.environ["MASTER_PORT"] = args.master_port
+os.environ["WORLD_SIZE"] = str(args.world_size)
+if args.network_interface:
+    os.environ["GLOO_SOCKET_IFNAME"] = args.network_interface
+    os.environ["NCCL_SOCKET_IFNAME"] = args.network_interface
+os.environ["USE_CUDA"] = "1"
+os.environ["NCCL_DEBUG"] = "TRACE"
+os.environ["GLOO_LOG_LEVEL"] = "DEBUG"
+os.environ["TORCH_CPP_LOG_LEVEL"] = "INFO"
+os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+
 def run(rank: int, args: argparse.Namespace, partioner: DataPartitioner, image_shape: Tuple[int, int, int], z_dim: int, generator: nn.Module, discriminator: nn.Module) -> None:
     # If the rank is greater than 0, we are a worker
     logging.info(f"Starting up process for node: {rank}")
@@ -117,19 +130,7 @@ def init_process(local_rank: int, args: argparse.Namespace, ranks: List[int], pa
     :param args: The arguments of the program
     """
     rank = ranks[local_rank]
-    os.environ["MASTER_ADDR"] = args.master_addr
-    os.environ["MASTER_PORT"] = args.master_port
-    os.environ["WORLD_SIZE"] = str(args.world_size)
     os.environ["RANK"] = str(rank)
-    if args.network_interface:
-        os.environ["GLOO_SOCKET_IFNAME"] = args.network_interface
-        os.environ["NCCL_SOCKET_IFNAME"] = args.network_interface
-    os.environ["USE_CUDA"] = "1"
-    os.environ["NCCL_DEBUG"] = "TRACE"
-    os.environ["GLOO_LOG_LEVEL"] = "DEBUG"
-    os.environ["TORCH_CPP_LOG_LEVEL"] = "INFO"
-    os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
-    os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
     partioner.rank = rank
 
