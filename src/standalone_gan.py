@@ -93,18 +93,6 @@ if __name__ == "__main__":
     # Dynamically import the dataset module
     dataset_module = importlib.import_module(f"datasets.{args.dataset}")
 
-    # Initialize the data partitioner
-    partioner: DataPartitioner = dataset_module.Partitioner
-    partioner = partioner(0, 0)
-    partioner.load_data()
-    dataloader = DataLoader(
-        partioner.train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=4,
-        pin_memory=True
-    )
-
     # Initialize the generator and discriminator
     generator: nn.Module = dataset_module.Generator().to(device)
     discriminator: nn.Module = dataset_module.Discriminator().to(device)
@@ -130,6 +118,18 @@ if __name__ == "__main__":
     beta_1: float = args.beta_1
     beta_2: float = args.beta_2
 
+    # Initialize the data partitioner
+    partioner: DataPartitioner = dataset_module.Partitioner
+    partioner = partioner(0, 0)
+    partioner.load_data()
+    dataloader = DataLoader(
+        partioner.train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True
+    )
+    dataloader_it = iter(dataloader)
+
     # Setup the loss function and optimizers
     criterion = nn.BCELoss()
     optimizer_discriminator = optim.Adam(
@@ -139,11 +139,8 @@ if __name__ == "__main__":
         generator.parameters(), lr=generator_lr, betas=(beta_1, beta_2)
     )
 
-    fixed_noise = torch.randn(args.batch_size, z_dim, 1, 1, device=device)
-    real_label = torch.ones(args.batch_size, device=device)
-    fake_label = torch.zeros(args.batch_size, device=device)
-    g_loss: List[float] = []
-    d_loss: List[float] = []
+    real_label = torch.ones(batch_size, device=device)
+    fake_label = torch.zeros(batch_size, device=device)
 
     image_output_path: Path = Path("saved_images_standalone")
     weights_output_path: Path = Path("weights")
@@ -159,6 +156,9 @@ if __name__ == "__main__":
             "start.discriminator_train": None,
             "end.discriminator_train": None,
             "start.generator_train": None,
+            "start.generator_train": None,
+            "start.generate_data": None,
+            "end.generate_data": None,
             "end.generator_train": None,
             "end.epoch_calculation": None,
             "absolut_step": epoch * local_epochs,
@@ -174,10 +174,18 @@ if __name__ == "__main__":
             "is": None,
         }
 
-        real_images = next(iter(dataloader))[0].to(device)
-        
+        current_logs["start.generate_data"] = time.time()
+        try:
+            real_images = next(dataloader_it)[0].to(device)  # Ensure real images are on the correct device
+        except StopIteration:
+            # Reinitialize the iterator if we run out of data
+            dataloader_it = iter(dataloader)
+            real_images = next(dataloader_it)[0].to(device)
+        current_logs["end.generate_data"] = time.time()
+
         noise = torch.randn(batch_size, z_dim, 1, 1, device=device)
         fake_images: torch.Tensor = generator(noise)
+        print(current_logs["end.generate_data"] - current_logs["start.generate_data"])
 
         losses_d = torch.zeros(local_epochs, device=device, dtype=torch.float32)
         losses_g = torch.zeros(local_epochs, device=device, dtype=torch.float32)

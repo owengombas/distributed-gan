@@ -88,6 +88,7 @@ def start(
         shuffle=True,
         generator=g,
     )
+    dataloader_it = iter(dataloader)
 
     logging.info(
         f"Worker {rank} with length {len(partition_train)} out of {len(data_partitioner.train_dataset)} ({indices})"
@@ -155,7 +156,12 @@ def start(
         }
 
         # Get N random samples from the dataset
-        real_images = next(iter(dataloader))[0].to(device)
+        try:
+            real_images = next(dataloader_it)[0].to(device)  # Ensure real images are on the correct device
+        except StopIteration:
+            # Reinitialize the iterator if we run out of data
+            dataloader_it = iter(dataloader)
+            real_images = next(dataloader_it)[0].to(device)
 
         # Save real images, commented because it use compute resources and is not necessary
         # grid = make_grid(
