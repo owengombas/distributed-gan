@@ -2,12 +2,10 @@ __pycache__
 .DS_Store
 *.pdf
 .venv
-saved_images
-saved_images_*
-logs
-data
+src/data
 archive
 .vscode
 *.h.sh
 weights
 _build
+*.zip
