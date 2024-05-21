@@ -181,11 +181,10 @@ if __name__ == "__main__":
             # Reinitialize the iterator if we run out of data
             dataloader_it = iter(dataloader)
             real_images = next(dataloader_it)[0].to(device)
-        current_logs["end.generate_data"] = time.time()
 
         noise = torch.randn(batch_size, z_dim, 1, 1, device=device)
         fake_images: torch.Tensor = generator(noise)
-        print(current_logs["end.generate_data"] - current_logs["start.generate_data"])
+        current_logs["end.generate_data"] = time.time()
 
         losses_d = torch.zeros(local_epochs, device=device, dtype=torch.float32)
         losses_g = torch.zeros(local_epochs, device=device, dtype=torch.float32)
