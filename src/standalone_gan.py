@@ -83,6 +83,13 @@ torch.backends.cudnn.deterministic = True
 device = torch.device(args.device)
 
 if __name__ == "__main__":
+    # Determine the evaluation device
+    evaluation_device = torch.device("cpu")
+    if torch.cuda.is_available():
+        evaluation_device = torch.device("cuda")
+    
+    print(f"Running in {device} and evaluating on {evaluation_device}")
+
     # Dynamically import the dataset module
     dataset_module = importlib.import_module(f"datasets.{args.dataset}")
 
@@ -94,15 +101,15 @@ if __name__ == "__main__":
         partioner.train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
+        num_workers=4,
+        pin_memory=True
     )
 
     # Initialize the generator and discriminator
-    generator: nn.Module = dataset_module.Generator()
-    discriminator: nn.Module = dataset_module.Discriminator()
+    generator: nn.Module = dataset_module.Generator().to(device)
+    discriminator: nn.Module = dataset_module.Discriminator().to(device)
 
     # Initialize the weights of the generator and discriminator
-    generator.to(device)
-    discriminator.to(device)
     generator.apply(_weights_init)
     discriminator.apply(_weights_init)
 
@@ -138,11 +145,6 @@ if __name__ == "__main__":
     g_loss: List[float] = []
     d_loss: List[float] = []
 
-    # Determine the evaluation device
-    evaluation_device = torch.device("cpu")
-    if torch.cuda.is_available():
-        evaluation_device = torch.device("cuda")
-
     image_output_path: Path = Path("saved_images_standalone")
     weights_output_path: Path = Path("weights")
     logs_output_path: Path = Path("logs")
@@ -154,6 +156,10 @@ if __name__ == "__main__":
             "start.epoch": time.time(),
             "end.epoch": None,
             "start.epoch_calculation": time.time(),
+            "start.discriminator_train": None,
+            "end.discriminator_train": None,
+            "start.generator_train": None,
+            "end.generator_train": None,
             "end.epoch_calculation": None,
             "absolut_step": epoch * local_epochs,
             "mean_d_loss": None,
@@ -169,26 +175,30 @@ if __name__ == "__main__":
         }
 
         real_images = next(iter(dataloader))[0].to(device)
+        
+        noise = torch.randn(batch_size, z_dim, 1, 1, device=device)
+        fake_images: torch.Tensor = generator(noise)
+
         losses_d = torch.zeros(local_epochs, device=device, dtype=torch.float32)
         losses_g = torch.zeros(local_epochs, device=device, dtype=torch.float32)
         for i in range(local_epochs):
             # (1) Update discriminator network by maximizing log(D(x)) + log(1 - D(G(z)))
+            current_logs["start.discriminator_train"] = time.time()
             discriminator.zero_grad()
-            batch_size = real_images.size(0)
             output: torch.Tensor = discriminator(real_images)
             errD_real: torch.Tensor = criterion(output, real_label)
             errD_real.backward()
 
             # Train with fake
-            noise = torch.randn(batch_size, z_dim, 1, 1, device=device)
-            fake_images: torch.Tensor = generator(noise)
             output: torch.Tensor = discriminator(fake_images.detach())
             errD_fake: torch.Tensor = criterion(output, fake_label)
             errD_fake.backward()
             errD: torch.Tensor = errD_real + errD_fake
             losses_d[i] = errD
             optimizer_discriminator.step()
+            current_logs["end.discriminator_train"] = time.time()
 
+            current_logs["start.generator_train"] = time.time()
             # (2) Update the generator network by maximizing log(D(G(z)))
             generator.zero_grad()
             output: torch.Tensor = discriminator(fake_images)
@@ -196,14 +206,16 @@ if __name__ == "__main__":
             losses_g[i] = errG
             errG.backward()
             optimizer_generator.step()
+            current_logs["end.generator_train"] = time.time()
 
-            print(
-                f"Epoch {epoch}, Step {i}, Loss D {errD.item()}, Loss G {errG.item()}"
-            )
         current_logs["mean_d_loss"] = losses_d.mean().item()
         current_logs["mean_g_loss"] = losses_g.mean().item()
         current_logs["end.epoch_calculation"] = time.time()
         current_logs["start.train"] = time.time()
+
+        print(
+            f"Epoch {epoch}, Step {i}, Loss D {errD.item()}, Loss G {errG.item()}"
+        )
 
         if epoch % args.log_interval == 0:
             # Normalize the images to [0, 1] range instead of [-1, 1]
