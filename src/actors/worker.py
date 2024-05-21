@@ -169,11 +169,11 @@ def start(
 
         # Receive fake images from the server
         current_logs["start.recv_data"] = time.time()
-        X_gen = torch.zeros((2 * batch_size, *image_shape), dtype=torch.float32)
+        X_gen = torch.zeros((2, batch_size, *image_shape), dtype=torch.float32)
         dist.recv(tensor=X_gen, src=0)
         X_gen = X_gen.to(device)
-        X_g = X_gen[batch_size:]
-        X_d = X_gen[:batch_size]
+        X_g: torch.Tensor = X_gen[0]
+        X_d: torch.Tensor = X_gen[1]
         X_g.requires_grad = True
         X_d.requires_grad = True
         logging.info(f"Worker {rank} received data of shape {X_gen.shape}")
@@ -190,7 +190,7 @@ def start(
             d_loss_real: torch.Tensor = criterion(output, real_labels)
 
             # Train Discriminator with fake images
-            output = discriminator(X_d.detach())
+            output = discriminator(X_d)
             d_loss_fake: torch.Tensor = criterion(output, fake_labels)
             d_loss = d_loss_real + d_loss_fake
             d_loss.backward()

@@ -119,7 +119,7 @@ def start(
 
     # K is the number of data batch the generator will generate for every epoch, many workers will therefore use the same data
     # since K < N
-    k = math.floor(N)
+    k = math.floor(math.log(N))
     logging.info(f"Server {rank} has {N} workers and K={k}")
 
     # Determine the evaluation device
@@ -174,8 +174,8 @@ def start(
     feedbacks = torch.zeros((N, batch_size, *image_shape), device=communication_device, requires_grad=True, dtype=torch.float32)
     size_feedback = feedbacks.element_size() * feedbacks.nelement() / 1024**2 # in MB
 
-    fake_data = torch.zeros((2 * batch_size, *image_shape), device=communication_device, dtype=torch.float32)
-    size_fake_data = 2 * batch_size * (fake_data.element_size() * fake_data.nelement()) / 1024**2 # in MB
+    fake_data = torch.zeros((2, batch_size, *image_shape), device=communication_device, dtype=torch.float32)
+    size_fake_data = fake_data.element_size() * fake_data.nelement() / 1024**2 # in MB
     for epoch in range(epochs):
         logging.info(f"Server {rank} starting epoch {epoch}")
         current_logs = {
@@ -211,11 +211,12 @@ def start(
 
         current_logs["start.generate_data"] = time.time()
         # Generate K batches of data
-        seed = torch.randn((k * batch_size, z_dim, 1, 1), device=device)
+        seed = torch.randn((2 * k * batch_size, z_dim, 1, 1), device=device)
         X: torch.tensor = generator(seed).to(device=device)
+        logging.info(f"Server {rank} generated data with shape {X.shape}")
         # split in <k> batches
-        K = torch.chunk(X, k)
-        logging.info(f"Server {rank} generated {len(K)} batches of data")
+        K = torch.chunk(X, 2 * k)
+        logging.info(f"Server {rank} generated {len(K)} batches of data, each with shape {K[0].shape}")
         current_logs["end.generate_data"] = time.time()
 
         current_logs["start.send_data"] = time.time()
@@ -230,10 +231,10 @@ def start(
 
             # Send the generated data to the worker
             X_g = K[n % k]
-            X_d = K[(n+1) % k]
+            X_d = K[n % k + 1]
 
             # Concatenate the generated data with the feedback
-            t_n = torch.cat([X_g, X_d], dim=0)
+            t_n = torch.stack([X_g, X_d], dim=0)
             t_n = t_n.to(device=communication_device)
             logging.info(
                 f"Server {rank} sending generated data with shape {t_n.shape} to worker {n+1}"
@@ -332,6 +333,7 @@ def start(
         current_logs["end.epoch_calculation"] = time.time()
         if epoch % log_interval == 0 or epoch == epochs - 1:
             fake_images = X.detach()
+            logging.info(f"Server {rank} generated {fake_images.shape} images")
             if fake_images.shape[1] < 3:
                 fake_images = fake_images.repeat(1, 3, 1, 1)
             # normalize the images from 0 to 255
