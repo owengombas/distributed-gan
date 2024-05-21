@@ -3,12 +3,12 @@
 cd src
 
 seed=3
-world_size=5
+world_size=11
 backend=gloo
-swap_interval=10000
-master_addr=localhost
+swap_interval=5000
+master_addr=10.186.0.10
 master_port=1234
-network_interface=en0
+network_interface=ens5
 
 python bootstrap.py \
     --backend $backend \
