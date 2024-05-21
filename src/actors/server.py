@@ -213,7 +213,8 @@ def start(
         # Generate K batches of data
         seed = torch.randn((k * batch_size, z_dim, 1, 1), device=device)
         X: torch.tensor = generator(seed).to(device=device)
-        K = torch.split(X, batch_size, dim=0)
+        # split in <k> batches
+        K = torch.chunk(X, k)
         logging.info(f"Server {rank} generated {len(K)} batches of data")
         current_logs["end.generate_data"] = time.time()
 
@@ -229,7 +230,7 @@ def start(
 
             # Send the generated data to the worker
             X_g = K[n % k]
-            X_d = K[(n + 1) % k]
+            X_d = K[(n+1) % k]
 
             # Concatenate the generated data with the feedback
             t_n = torch.cat([X_g, X_d], dim=0)

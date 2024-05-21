@@ -3,9 +3,9 @@
 cd src
 
 seed=3
-world_size=3
+world_size=5
 backend=gloo
-swap_interval=600
+swap_interval=10000
 master_addr=localhost
 master_port=1234
 network_interface=en0
