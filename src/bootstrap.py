@@ -120,6 +120,8 @@ def run(rank: int, args: argparse.Namespace, partioner: DataPartitioner, image_s
             iid=args.iid == 1,
             dataset_name=args.dataset,
             swap_interval=args.swap_interval,
+            beta_1=args.beta_1,
+            beta_2=args.beta_2,
         )
 
 def init_process(local_rank: int, args: argparse.Namespace, ranks: List[int], partioner: DataPartitioner, image_shape: Tuple[int, int, int], z_dim: int, generator: nn.Module, discriminator: nn.Module, fn: Callable[[int, argparse.Namespace], None]) -> None:

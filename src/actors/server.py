@@ -83,6 +83,8 @@ def start(
     n_samples: int = 5,
     iid: bool = True,
     swap_interval: int = 1,
+    beta_1: float = 0.5,
+    beta_2: float = 0.999,
 ):
     # Initialize the process group (TCP)
     dist.init_process_group(
@@ -109,7 +111,7 @@ def start(
 
     # Initialize the generator, notice that the server do not hold a loss function
     optimizer = torch.optim.Adam(
-        generator.parameters(), lr=generator_lr, betas=(0, 0.999)
+        generator.parameters(), lr=generator_lr, betas=(beta_1, beta_2)
     )
 
     # N is the number of workers, world_size includes the server
@@ -117,7 +119,7 @@ def start(
 
     # K is the number of data batch the generator will generate for every epoch, many workers will therefore use the same data
     # since K < N
-    k = math.floor(math.log2(N))
+    k = math.floor(N)
     logging.info(f"Server {rank} has {N} workers and K={k}")
 
     # Determine the evaluation device

@@ -127,7 +127,6 @@ def start(
     model_size_mb = (param_size + buffer_size) / 1024**2
     logging.info(f"Worker {rank} model size: {model_size_mb} MB")
 
-    stat_dict_receiver = discriminator.state_dict()
     for epoch in range(epochs):
         logging.info(f"Worker {rank} starting epoch {epoch}")
         current_logs = {
