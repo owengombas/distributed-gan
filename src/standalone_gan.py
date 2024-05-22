@@ -1,5 +1,4 @@
 import argparse
-import json
 from typing import Dict, Any, Tuple, List
 import torch
 import torch.nn as nn
@@ -15,7 +14,7 @@ import random
 import numpy as np
 from datasets.DataPartitioner import DataPartitioner
 import importlib
-
+import csv
 
 def _weights_init(m: nn.Module) -> None:
     """
@@ -145,35 +144,41 @@ if __name__ == "__main__":
     image_output_path: Path = Path("saved_images_standalone")
     weights_output_path: Path = Path("weights")
     logs_output_path: Path = Path("logs")
-    logs_filename = f"{args.dataset}.standalone.logs.json"
-    logs = []
-    for epoch in range(epochs):
-        current_logs = {
-            "epoch": epoch,
-            "start.epoch": time.time(),
-            "end.epoch": None,
-            "start.epoch_calculation": time.time(),
-            "start.discriminator_train": None,
-            "end.discriminator_train": None,
-            "start.generator_train": None,
-            "start.generator_train": None,
-            "start.generate_data": None,
-            "end.generate_data": None,
-            "end.generator_train": None,
-            "end.epoch_calculation": None,
-            "absolut_step": epoch * local_epochs,
-            "mean_d_loss": None,
-            "mean_g_loss": None,
-            "start.train": time.time(),
-            "end.train": None,
-            "start.fid": None,
-            "end.fid": None,
-            "start.is": None,
-            "end.is": None,
-            "fid": None,
-            "is": None,
-        }
+    logs_file = logs_output_path / f"{args.dataset}.standalone.logs.csv"
 
+    get_log = lambda epoch: {
+        "epoch": epoch,
+        "start.epoch": time.time(),
+        "end.epoch": None,
+        "start.epoch_calculation": time.time(),
+        "start.discriminator_train": None,
+        "end.discriminator_train": None,
+        "start.generator_train": None,
+        "start.generator_train": None,
+        "start.generate_data": None,
+        "end.generate_data": None,
+        "end.generator_train": None,
+        "end.epoch_calculation": None,
+        "start.calc_gradients": None,
+        "end.calc_gradients": None,
+        "absolut_step": epoch * local_epochs,
+        "mean_d_loss": None,
+        "mean_g_loss": None,
+        "start.train": time.time(),
+        "end.train": None,
+        "start.fid": None,
+        "end.fid": None,
+        "start.is": None,
+        "end.is": None,
+        "fid": None,
+        "is": None,
+    }
+
+    f = open(logs_file, "a", encoding="utf-8")
+    csv_writer = csv.DictWriter(f, fieldnames=get_log(0).keys())
+    csv_writer.writeheader()
+    for epoch in range(epochs):
+        current_logs = get_log(epoch)
         current_logs["start.generate_data"] = time.time()
         try:
             real_images = next(dataloader_it)[0].to(device)  # Ensure real images are on the correct device
@@ -186,6 +191,8 @@ if __name__ == "__main__":
         fake_images: torch.Tensor = generator(noise)
         current_logs["end.generate_data"] = time.time()
 
+
+        current_logs["start.calc_gradients"] = time.time()
         losses_d = torch.zeros(local_epochs, device=device, dtype=torch.float32)
         losses_g = torch.zeros(local_epochs, device=device, dtype=torch.float32)
         for i in range(local_epochs):
@@ -214,7 +221,7 @@ if __name__ == "__main__":
             errG.backward()
             optimizer_generator.step()
             current_logs["end.generator_train"] = time.time()
-
+        current_logs["end.calc_gradients"] = time.time()
         current_logs["mean_d_loss"] = losses_d.mean().item()
         current_logs["mean_g_loss"] = losses_g.mean().item()
         current_logs["end.epoch_calculation"] = time.time()
@@ -264,9 +271,7 @@ if __name__ == "__main__":
 
         logs_output_path.mkdir(parents=True, exist_ok=True)
         current_logs["end.epoch"] = time.time()
-        logs.append(current_logs)
-        with open(logs_output_path / logs_filename, "w") as f:
-            json.dump(logs, f)
+        csv_writer.writerow(current_logs)
 
         # Check pointing for every epoch
         weights_output_path.mkdir(parents=True, exist_ok=True)

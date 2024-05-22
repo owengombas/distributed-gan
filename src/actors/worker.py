@@ -4,19 +4,17 @@ import logging
 import torch.nn as nn
 import torch.utils.data
 from tensordict import TensorDict
-import numpy as np
-from threading import Thread
 from pathlib import Path
 from datasets.DataPartitioner import DataPartitioner
 from typing import List, Dict, Any, Tuple
 import os
-import json
 import time
 from pathlib import Path
 import os
 from torchvision.utils import make_grid
 from torchvision.transforms.functional import to_pil_image
-from datetime import datetime, timedelta
+from datetime import timedelta
+import csv
 
 
 def start(
@@ -64,7 +62,7 @@ def start(
     print(discriminator)
 
     name = f"mdgan.{world_size-1}.{dataset_name}"
-    logs_file = log_folder / f"{name}.worker.{rank}.logs.json"
+    logs_file = log_folder / f"{name}.worker.{rank}.logs.csv"
 
     # Get the indices of the dataset that the server wants the worker to train on
     # 1. Receive the size of the indices tensor to initialize the tensor which will store the indices
@@ -115,7 +113,6 @@ def start(
     # Initialize the labels values for the real and fake images
     real_labels = torch.ones(batch_size).to(device)
     fake_labels = torch.zeros(batch_size).to(device)
-    logs = []
 
     # Determine the model size
     # https://discuss.pytorch.org/t/finding-model-size/130275/2
@@ -128,32 +125,38 @@ def start(
     model_size_mb = (param_size + buffer_size) / 1024**2
     logging.info(f"Worker {rank} model size: {model_size_mb} MB")
 
+    # Initialize the logs
+    get_log = lambda epoch: {
+        "epoch": epoch,
+        "start.epoch": time.time(),
+        "end.epoch": None,
+        "start.calc_gradients": None,
+        "end.calc_gradients": None,
+        "start.recv_data": None,
+        "end.recv_data": None,
+        "start.send": None,
+        "end.send": None,
+        "start.swap_recv_instruction": None,
+        "end.swap_recv_instruction": None,
+        "start.load_state_dict": None,
+        "end.load_state_dict": None,
+        "start.swap_recv": None,
+        "end.swap_recv": None,
+        "start.swap_send": None,
+        "end.swap_send": None,
+        "swap_with": None,
+        "mean_d_loss": None,
+        "size.model": model_size_mb,
+        "size.sent": 0,
+        "size.recv": 0,
+    }
+    f = open(logs_file, "a", encoding="utf-8")
+    csv_writer = csv.DictWriter(f, fieldnames=get_log(0).keys())
+    csv_writer.writeheader()
+
     for epoch in range(epochs):
         logging.info(f"Worker {rank} starting epoch {epoch}")
-        current_logs = {
-            "epoch": epoch,
-            "start.epoch": time.time(),
-            "end.epoch": None,
-            "start.calc_gradients": None,
-            "end.calc_gradients": None,
-            "start.recv_data": None,
-            "end.recv_data": None,
-            "start.send": None,
-            "end.send": None,
-            "start.swap_recv_instruction": None,
-            "end.swap_recv_instruction": None,
-            "start.load_state_dict": None,
-            "end.load_state_dict": None,
-            "start.swap_recv": None,
-            "end.swap_recv": None,
-            "start.swap_send": None,
-            "end.swap_send": None,
-            "swap_with": None,
-            "mean_d_loss": None,
-            "size.model": model_size_mb,
-            "size.sent": 0,
-            "size.recv": 0,
-        }
+        current_logs = get_log(epoch)
 
         # Get N random samples from the dataset
         try:
@@ -280,9 +283,7 @@ def start(
                 current_logs["end.load_state_dict"] = time.time()
                 logging.info(f"Worker {rank} loaded state_dict from worker {swap_with}")
 
-        logs.append(current_logs)
-        with open(logs_file, "w") as f:
-            json.dump(logs, f)
+        csv_writer.writerow(current_logs)
 
     # Save the model
     model_path = Path(f"weights/worker_{rank}")

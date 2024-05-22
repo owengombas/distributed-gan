@@ -1,6 +1,5 @@
 import math
 from typing import List, Tuple
-
 import torch.cuda
 import torch.distributed as dist
 import torch
@@ -13,10 +12,10 @@ from pathlib import Path
 import time
 from pathlib import Path
 from typing import Dict, Any
-import json
 from datetime import datetime, timedelta
 from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.inception import InceptionScore
+import csv
 
 def _compute_fid_score(
     real_images: torch.Tensor, fake_images: torch.Tensor, device: torch.device = torch.device("cpu")
@@ -106,8 +105,7 @@ def start(
 
     image_save_dir: Path = Path("saved_images")
     name = f"mdgan.{world_size-1}.{dataset_name}"
-    log_file: Path = log_folder / f"{name}.server.logs.json"
-    logs = []
+    logs_file: Path = log_folder / f"{name}.server.logs.csv"
 
     # Initialize the generator, notice that the server do not hold a loss function
     optimizer = torch.optim.Adam(
@@ -176,38 +174,45 @@ def start(
 
     fake_data = torch.zeros((2, batch_size, *image_shape), device=communication_device, dtype=torch.float32)
     size_fake_data = fake_data.element_size() * fake_data.nelement() / 1024**2 # in MB
+
+    # Initialize the logs
+    get_log = lambda epoch: {
+        "epoch": epoch,
+        "start.epoch": time.time(),
+        "end.epoch": None,
+        "start.epoch_calculation": time.time(),
+        "end.epoch_calculation": None,
+        "start.send_data": None,
+        "end.send_data": None,
+        "start.recv_data": None,
+        "end.recv_data": None,
+        "start.calc_gradients": None,
+        "end.calc_gradients": None,
+        "start.agg_gradients": None,
+        "end.agg_gradients": None,
+        "start.generate_data": None,
+        "end.generate_data": None,
+        "fid": None,
+        "is": None,
+        "start.fid": None,
+        "end.fid": None,
+        "start.is": None,
+        "end.is": None,
+        "size.data": size_fake_data,
+        "size.feedback": size_feedback,
+        "start.swap": None,
+        "end.swap": None,
+        "swap": False,
+        "size.sent": 0,
+        "size.recv": 0,
+    }
+    f = open(logs_file, "a", encoding="utf-8")
+    csv_writer = csv.DictWriter(f, fieldnames=get_log(0).keys())
+    csv_writer.writeheader()
+
     for epoch in range(epochs):
         logging.info(f"Server {rank} starting epoch {epoch}")
-        current_logs = {
-            "epoch": epoch,
-            "start.epoch": time.time(),
-            "end.epoch": None,
-            "start.epoch_calculation": time.time(),
-            "end.epoch_calculation": None,
-            "start.send_data": None,
-            "end.send_data": None,
-            "start.recv_data": None,
-            "end.recv_data": None,
-            "start.calc_gradients": None,
-            "end.calc_gradients": None,
-            "start.apply_gradients": None,
-            "end.apply_gradients": None,
-            "start.generate_data": None,
-            "end.generate_data": None,
-            "fid": None,
-            "is": None,
-            "start.fid": None,
-            "end.fid": None,
-            "start.is": None,
-            "end.is": None,
-            "size.data": size_fake_data,
-            "size.feedback": size_feedback,
-            "start.swap": None,
-            "end.swap": None,
-            "swap": False,
-            "size.sent": 0,
-            "size.recv": 0,
-        }
+        current_logs = get_log(epoch)
 
         current_logs["start.generate_data"] = time.time()
         # Generate K batches of data
@@ -261,7 +266,7 @@ def start(
         # Migrate the feedbacks to the device (could be the GPU, the gloo backend enforce to receive on CPU)
         feedbacks = feedbacks.to(device=device)
 
-        current_logs["start.calc_gradients"] = time.time()
+        current_logs["start.agg_gradients"] = time.time()
         # Precompute some constants
         inverse_batch_size_N = 1.0 / (batch_size * N)
 
@@ -298,17 +303,17 @@ def start(
         delta_w = [
             g * inverse_batch_size_N for g in grads_sum
         ]
-        current_logs["end.calc_gradients"] = time.time()
+        current_logs["end.agg_gradients"] = time.time()
         logging.info(f"Server {rank} aggregated the gradients from all workers")
 
-        current_logs["start.apply_gradients"] = time.time()
+        current_logs["start.calc_gradients"] = time.time()
         # Apply the aggregated gradients to the generator
         optimizer.zero_grad()
         for i, p in enumerate(generator.parameters()):
             if delta_w[i] is not None:
                 p.grad = delta_w[i].detach()  # Ensure the grad doesn't carry history
         optimizer.step()
-        current_logs["end.apply_gradients"] = time.time()
+        current_logs["end.calc_gradients"] = time.time()
 
         if N > 1:
             # Formula obtained from the MD-GAN paper
@@ -365,9 +370,7 @@ def start(
             torch.save(generator.state_dict(), weights_path / f"generator_{epoch}.pt")
 
         current_logs["end.epoch"] = time.time()
-        logs.append(current_logs)
-        with open(log_file, "w") as f:
-            json.dump(logs, f)
+        csv_writer.writerow(current_logs)
 
     # Save the generator model
     save_path = Path("weights") / "generator_final.pt"
