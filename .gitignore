@@ -6,6 +6,5 @@ src/data
 archive
 .vscode
 *.h.sh
-weights
 _build
 *.zip
