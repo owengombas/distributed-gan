@@ -273,7 +273,7 @@ if __name__ == "__main__":
         current_logs["end.epoch"] = time.time()
         csv_writer.writerow(current_logs)
 
-        # Check pointing for every epoch
-        weights_output_path.mkdir(parents=True, exist_ok=True)
-        torch.save(generator.state_dict(), weights_output_path / f"netG_epoch_{epoch}.pth")
-        torch.save(discriminator.state_dict(), weights_output_path / f"netD_epoch_{epoch}.pth")
+    # Check pointing for every epoch
+    weights_output_path.mkdir(parents=True, exist_ok=True)
+    torch.save(generator.state_dict(), weights_output_path / f"netG_epoch_{epoch}.pth")
+    torch.save(discriminator.state_dict(), weights_output_path / f"netD_epoch_{epoch}.pth")
