@@ -1,10 +1,10 @@
 <mxfile host="65bd71144e">
     <diagram id="NaShmbrG1pqoMrWIJ8-R" name="Page-1">
-        <mxGraphModel dx="2722" dy="2894" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="2410" dy="2595" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
-                <mxCell id="114" value="" style="rounded=1;whiteSpace=wrap;html=1;fontSize=21;fontColor=#FF3333;imageAspect=1;absoluteArcSize=1;" vertex="1" parent="1">
+                <mxCell id="114" value="" style="rounded=1;whiteSpace=wrap;html=1;fontSize=21;fontColor=#FF3333;imageAspect=1;absoluteArcSize=1;" parent="1" vertex="1">
                     <mxGeometry x="-170" y="-110" width="1160" height="1240" as="geometry"/>
                 </mxCell>
                 <mxCell id="2" value="" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=3;" parent="1" vertex="1">
@@ -120,7 +120,7 @@
                         <mxPoint x="-16" y="-181" as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="58" style="edgeStyle=none;html=1;strokeWidth=3;fontSize=16;fontColor=#FF0000;startArrow=none;startFill=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;exitX=0.75;exitY=0;exitDx=0;exitDy=0;" parent="1" target="19" edge="1" source="95">
+                <mxCell id="58" style="edgeStyle=none;html=1;strokeWidth=3;fontSize=16;fontColor=#FF0000;startArrow=none;startFill=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;exitX=0.75;exitY=0;exitDx=0;exitDy=0;" parent="1" source="95" target="19" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <mxPoint x="210" y="680" as="sourcePoint"/>
                         <mxPoint x="710" y="290" as="targetPoint"/>
@@ -131,7 +131,7 @@
                         <mxPoint x="28" y="34" as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="60" style="edgeStyle=none;html=1;strokeWidth=3;fontSize=16;fontColor=#FF0000;startArrow=none;startFill=0;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" parent="1" source="19" edge="1" target="95">
+                <mxCell id="60" style="edgeStyle=none;html=1;strokeWidth=3;fontSize=16;fontColor=#FF0000;startArrow=none;startFill=0;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" parent="1" source="19" target="95" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <mxPoint x="532.3799999999999" y="291.1600000000001" as="sourcePoint"/>
                         <mxPoint x="20" y="640" as="targetPoint"/>
@@ -142,7 +142,7 @@
                         <mxPoint x="-26" y="-76" as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="62" style="edgeStyle=none;html=1;strokeWidth=3;fontSize=16;fontColor=#FF0000;startArrow=none;startFill=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="19" edge="1" target="95">
+                <mxCell id="62" style="edgeStyle=none;html=1;strokeWidth=3;fontSize=16;fontColor=#FF0000;startArrow=none;startFill=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="19" target="95" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <mxPoint x="610.7" y="292.1600000000001" as="sourcePoint"/>
                         <mxPoint x="100" y="681" as="targetPoint"/>
@@ -156,7 +156,7 @@
                 <mxCell id="57" value="&lt;span style=&quot;font-size: 25px;&quot;&gt;Google Cloud Compute Engine&lt;/span&gt;&lt;br style=&quot;border-color: var(--border-color); font-size: 25px;&quot;&gt;&lt;span style=&quot;font-size: 25px;&quot;&gt;10.186.0.2&lt;/span&gt;&lt;br style=&quot;border-color: var(--border-color); font-size: 25px;&quot;&gt;&lt;font style=&quot;border-color: var(--border-color); font-size: 25px;&quot; color=&quot;#ff3333&quot;&gt;europe-west4-b&lt;br style=&quot;border-color: var(--border-color);&quot;&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
                     <mxGeometry x="-75.00500000000001" y="990" width="370" height="100" as="geometry"/>
                 </mxCell>
-                <mxCell id="115" value="Virtual Private Cloud (VPC)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=31;fontColor=#000000;fontStyle=1" vertex="1" parent="1">
+                <mxCell id="115" value="Virtual Private Cloud (VPC)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=31;fontColor=#000000;fontStyle=1" parent="1" vertex="1">
                     <mxGeometry x="-170" y="-150" width="420" height="30" as="geometry"/>
                 </mxCell>
             </root>

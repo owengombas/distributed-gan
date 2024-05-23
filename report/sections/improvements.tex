@@ -1,0 +1,40 @@
+\chapter{Improvements}
+This chapter describes potential enhancements and future directions based on the knowledge acquired from our course on Distributed Deep Learning System, extensive discussions with our supervisors, and insights from relevant literature.
+
+
+\section{General developments}
+Our project benefits from its deployment on Google Cloud, which simulates real-time operations. This capability is crucial as it differs from traditional simulated setups that operate sequentially. 
+
+Operating in this live environment allows us to dynamically observe and adjust the system, responding immediately to changes as they occur. This is particularly advantageous for distributed systems like ours, where continuous data flow and rapid system response are critical. Such real-time processing not only facilitates immediate insights into performance and scalability but also enhances the overall efficiency of the distributed GAN model.
+
+Exploring further with this live setting could be beneficial, particularly in implementing improvements such as managing non-IID data, which would further enhance the system’s adaptability and performance in real-world scenarios.
+ 
+\subsection{Advances in Non-IID Data Management}
+While we have successfully addressed many challenges associated with Non-IID data, this area remains a subject for further research. 
+
+Non-IID data can manifest in various forms, for instance, differences in computing power across different clients can lead to significant variations in processing speeds.
+
+Additionally, more specific to our project, could be diversity in the architecture of discriminators among clients, some being more advanced than others, it could introduce biases affecting the overall model performance. 
+Future work could include deeper analysis of these variations and their impacts, enhancing the robustness and fairness of the federated learning model.
+
+
+\section{Attack and Defense Mechanisms}
+The exploration of potential attacks and defenses within federated learning systems forms a critical component of future research.
+
+Model and data poisoning attacks, for instance, could severely weaken the integrity of the generated models. Similarly, backdoor attacks pose significant threats that could manipulate the model outputs subtly yet effectively. Implementing and testing defense strategies like Multi-Krum, Trimmed Mean, Majority Sign, and Clipping, which were discussed in our lectures, could protect against these vulnerabilities. 
+
+Furthermore, investigating the 'free-rider' attack, where some participants benefit without contributing, could ensure equitable resource usage and contribution among all clients.
+
+
+\section{Enhancing Data Privacy}
+The distributed nature of our model inherently supports data privacy by processing data locally at the client level. However, to reinforce privacy guarantees, implementing advanced encryption methods for data in transit could prevent interception and unauthorized access. 
+
+Additionally, applying Differential Privacy techniques, by injecting noise into the data or during the computation process, could help us determine the optimal balance between privacy and the utility of the generated models. 
+
+These enhancements would make our system more robust against attempts to extract sensitive information from the model.
+
+
+\section{Improving the Model's Performance}
+Lastly, optimizing the performance of our distributed GAN model is essential. Adjusting model configurations and tuning hyperparameters could lead to significant improvements. 
+
+Although such refinements might not drastically modify our main findings, they are crucial for achieving the best possible outcomes from our implementations. This process involves methodical experimentation and could produce valuable insights into the most effective configurations for distributed GANs.
