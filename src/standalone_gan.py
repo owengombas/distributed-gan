@@ -225,7 +225,6 @@ if __name__ == "__main__":
         current_logs["mean_d_loss"] = losses_d.mean().item()
         current_logs["mean_g_loss"] = losses_g.mean().item()
         current_logs["end.epoch_calculation"] = time.time()
-        current_logs["start.train"] = time.time()
 
         print(
             f"Epoch {epoch}, Step {i}, Loss D {errD.item()}, Loss G {errG.item()}"
