@@ -259,12 +259,11 @@ def start(
         current_logs["start.recv_data"] = time.time()
         for n in range(N):
             reqs_recv[n].wait()
-        current_logs["end.recv_data"] = time.time()
-        current_logs["size.recv"] = feedbacks.element_size() * feedbacks.nelement() / 1024**2 # in MB
         logging.info(f"Server {rank} received feedback from all workers")
-
         # Migrate the feedbacks to the device (could be the GPU, the gloo backend enforce to receive on CPU)
         feedbacks = feedbacks.to(device=device)
+        current_logs["end.recv_data"] = time.time()
+        current_logs["size.recv"] = feedbacks.element_size() * feedbacks.nelement() / 1024**2 # in MB
 
         current_logs["start.agg_gradients"] = time.time()
         # Precompute some constants
