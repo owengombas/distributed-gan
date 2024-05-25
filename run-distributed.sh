@@ -3,12 +3,12 @@
 cd src
 
 seed=3
-world_size=11
+world_size=3
 backend=gloo
 swap_interval=5000
-master_addr=10.186.0.10
+master_addr=localhost
 master_port=1234
-network_interface=ens5
+network_interface=en0
 
 python bootstrap.py \
     --backend $backend \
@@ -19,7 +19,6 @@ python bootstrap.py \
     --local_epochs $local_epochs \
     --swap_interval $swap_interval \
     --discriminator_lr $discriminator_lr \
-    --n_samples_fid $n_samples_fid \
     --generator_lr $generator_lr \
     --model $model \
     --device $device \

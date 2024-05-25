@@ -117,7 +117,7 @@ def start(
 
     # K is the number of data batch the generator will generate for every epoch, many workers will therefore use the same data
     # since K < N
-    k = math.floor(math.log(N))
+    k = max(math.floor(math.log(N)), 2)  # The results are reflects a version with the following line: X_d = K[n % k + 1]
     logging.info(f"Server {rank} has {N} workers and K={k}")
 
     # Determine the evaluation device
@@ -216,11 +216,11 @@ def start(
 
         current_logs["start.generate_data"] = time.time()
         # Generate K batches of data
-        seed = torch.randn((2 * k * batch_size, z_dim, 1, 1), device=device)
+        seed = torch.randn((k * batch_size, z_dim, 1, 1), device=device)
         X: torch.tensor = generator(seed).to(device=device)
         logging.info(f"Server {rank} generated data with shape {X.shape}")
         # split in <k> batches
-        K = torch.chunk(X, 2 * k)
+        K = torch.chunk(X, k)
         logging.info(f"Server {rank} generated {len(K)} batches of data, each with shape {K[0].shape}")
         current_logs["end.generate_data"] = time.time()
 
@@ -236,14 +236,12 @@ def start(
 
             # Send the generated data to the worker
             X_g = K[n % k]
-            X_d = K[n % k + 1]
+            X_d = K[(n + 1) % k] # The results are reflects a version with the following line: X_d = K[n % k + 1]
 
             # Concatenate the generated data with the feedback
             t_n = torch.stack([X_g, X_d], dim=0)
             t_n = t_n.to(device=communication_device)
-            logging.info(
-                f"Server {rank} sending generated data with shape {t_n.shape} to worker {n+1}"
-            )
+            logging.info(f"Server {rank} sending generated data with shape {t_n.shape} to worker {n+1}")
             req = dist.isend(tensor=t_n, dst=n+1)
             reqs_send.append(req)
             current_logs["size.sent"] += t_n.element_size() * t_n.nelement() / 1024**2 # in MB
