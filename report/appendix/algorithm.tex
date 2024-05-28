@@ -33,20 +33,20 @@
 \begin{algorithm}[H]
     \caption{MD-GAN algorithm}
     \begin{algorithmic}[1]
-    \Procedure{Worker}{$C, B_n, I, L, b$}
-        \State Initialize $\theta_n$ for $D_n$
+    \Procedure{Worker}{$C, B, I, L, b$}
+        \State Initialize weights for for $D$
         \For{$i \gets 1$ to $I$}
-            \State $X_n^{(r)}$ $\gets$ SAMPLES($B_n$)
-            \State $(X_n^{(g)}, X_n^{(d)})$ $\gets$ RECEIVE\_BATCHES($C$)
+            \State $X^{(r)}$ $\gets$ SAMPLES($B$)
+            \State $(X^{(g)}, X^{(d)})$ $\gets$ RECEIVE\_BATCHES($C$)
             \For{$l \gets 0$ to $L$}
-                \State $D_n$ $\gets$ LEARNING\_STEP($J_{\text{disc}}$, $D_n$)
+                \State $D$ $\gets$ LEARNING\_STEP($J_{\text{disc}}$, $D$)
             \EndFor
-            \State $F_n \gets \{\frac{\partial \tilde{B}(X_n^(g))}{\partial x_i} \mid x_i \in X_n^{(g)} \}$
-            \State SEND\_FEEDBACKS($C$, $F_n$)
+            \State $F \gets \{\frac{\partial \tilde{B}(X^{(g)})}{\partial x_i} \mid x_i \in X^{(g)} \}$
+            \State SEND\_FEEDBACKS($C$, $F$)
             \If{$i \mod S = 0 \text{ AND } i > 0$}
                 \State PARTNER $\gets$ RECEIVE\_PARTNER($C$)
-                \State SEND\_DISCRIMINATOR(PARTNER, $D_n$)
-                \State $D_n$ $\gets$ RECEIVE\_DISCRIMINATOR(PARTNER)
+                \State SEND\_DISCRIMINATOR(PARTNER, $D$)
+                \State $D$ $\gets$ RECEIVE\_DISCRIMINATOR(PARTNER)
             \EndIf
         \EndFor
     \EndProcedure
@@ -54,14 +54,11 @@
     \Procedure{Server}{$k, I$}
         \State Initialize $w$ for $G$
         \For{$i \gets 1$ to $I$}
-            \For{$j \gets 0$ to $k$}
-                \State $Z_j$ $\gets$ GAUSSIAN\_NOISE($b$)
-                \State $X_j^{(g)} \gets \{G_w(z) \mid z \in Z_j\}$
-            \EndFor
-            \State $(X_1^{(d)}, \dots, X_n^{(d)})$ $\gets$ SPLIT($X_1, \dots, X_k$)
-            \State $(X_1^{(g)}, \dots, X_n^{(g)})$ $\gets$ SPLIT($X_1, \dots, X_k$)
+            \State X $\gets G_w($GAUSSIAN\_NOISE$, 2k)$
             \For{$n \gets 1$ to $N$}
-                \State SEND($w_n, (X_n^{(d)}, X_n^{(g)})$)
+                \State $X^{(g)} \gets X^{(n \mod k)}$
+                \State $X^{(d)} \gets X^{(n \mod k)+1}$
+                \State SEND($w_n, (X^{(d)}, X^{(g)})$)
             \EndFor
         \EndFor
         \State $F_1, \dots, F_N$ $\gets$ RECEIVE\_FEEDBACKS\_FROM\_WORKERS()
