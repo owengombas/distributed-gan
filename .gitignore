@@ -8,3 +8,5 @@ archive
 *.h.sh
 _build
 *.zip
+src/results/weights
+src/weights
