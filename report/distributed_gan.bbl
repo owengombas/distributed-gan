@@ -1,0 +1,116 @@
+\begin{thebibliography}{}
+
+\bibitem[Bou et~al., 2023]{tensordict}
+Bou, A., Bettini, M., Dittert, S., Kumar, V., Sodhani, S., Yang, X., Fabritiis, G.~D., and Moens, V. (2023).
+\newblock Torchrl: A data-driven decision-making library for pytorch.
+
+\bibitem[Brock et~al., 2019]{brock2019large}
+Brock, A., Donahue, J., and Simonyan, K. (2019).
+\newblock Large scale gan training for high fidelity natural image synthesis.
+
+\bibitem[Chen et~al., 2022]{chen2022rethinking}
+Chen, J., Li, M., Liu, T., Zheng, H., Cheng, Y., and Lin, C. (2022).
+\newblock Rethinking the defense against free-rider attack from the perspective of model weight evolving frequency.
+
+\bibitem[Chen et~al., 2018]{chen2018ead}
+Chen, P.-Y., Sharma, Y., Zhang, H., Yi, J., and Hsieh, C.-J. (2018).
+\newblock Ead: Elastic-net attacks to deep neural networks via adversarial examples.
+
+\bibitem[Fraboni et~al., 2021]{fraboni2021freerider}
+Fraboni, Y., Vidal, R., and Lorenzi, M. (2021).
+\newblock Free-rider attacks on model aggregation in federated learning.
+
+\bibitem[Goodfellow et~al., 2014]{goodfellow2014generative}
+Goodfellow, I.~J., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair, S., Courville, A., and Bengio, Y. (2014).
+\newblock Generative adversarial networks.
+
+\bibitem[Goodfellow et~al., 2015]{goodfellow2015explaining}
+Goodfellow, I.~J., Shlens, J., and Szegedy, C. (2015).
+\newblock Explaining and harnessing adversarial examples.
+
+\bibitem[Hardy et~al., 2019]{mdgan}
+Hardy, C., Le~Merrer, E., and Sericola, B. (2019).
+\newblock Md-gan: Multi-discriminator generative adversarial networks for distributed datasets.
+\newblock In {\em 2019 IEEE International Parallel and Distributed Processing Symposium (IPDPS)}. IEEE.
+
+\bibitem[Heusel et~al., 2018]{fid}
+Heusel, M., Ramsauer, H., Unterthiner, T., Nessler, B., and Hochreiter, S. (2018).
+\newblock Gans trained by a two time-scale update rule converge to a local nash equilibrium.
+
+\bibitem[Huang et~al., 2021]{huang2021evaluating}
+Huang, Y., Gupta, S., Song, Z., Li, K., and Arora, S. (2021).
+\newblock Evaluating gradient inversion attacks and defenses in federated learning.
+
+\bibitem[James et~al., 2023]{james2023introduction}
+James, G., Witten, D., Hastie, T., Tibshirani, R., and Taylor, J. (2023).
+\newblock {\em An Introduction to Statistical Learning: With Applications in Python}.
+\newblock Springer International Publishing.
+
+\bibitem[Kahng et~al., 2019]{Kahng_2019}
+Kahng, M., Thorat, N., Chau, D. H.~P., Viegas, F.~B., and Wattenberg, M. (2019).
+\newblock Gan lab: Understanding complex deep generative models using interactive visual experimentation.
+\newblock {\em IEEE Transactions on Visualization and Computer Graphics}, 25(1):310–320.
+
+\bibitem[Krizhevsky et~al., 2009]{cifar}
+Krizhevsky, A., Nair, V., and Hinton, G. (2009).
+\newblock Cifar-10 (canadian institute for advanced research).
+
+\bibitem[Kurakin et~al., 2017]{kurakin2017adversarial}
+Kurakin, A., Goodfellow, I., and Bengio, S. (2017).
+\newblock Adversarial examples in the physical world.
+
+\bibitem[LeCun et~al., 2010]{mnist}
+LeCun, Y., Cortes, C., and Burges, C. (2010).
+\newblock Mnist handwritten digit database.
+\newblock {\em ATT Labs [Online]. Available: http://yann.lecun.com/exdb/mnist}, 2.
+
+\bibitem[Liu et~al., 2015]{celeba}
+Liu, Z., Luo, P., Wang, X., and Tang, X. (2015).
+\newblock Deep learning face attributes in the wild.
+\newblock In {\em Proceedings of International Conference on Computer Vision (ICCV)}.
+
+\bibitem[Moosavi-Dezfooli et~al., 2016]{moosavidezfooli2016deepfool}
+Moosavi-Dezfooli, S.-M., Fawzi, A., and Frossard, P. (2016).
+\newblock Deepfool: a simple and accurate method to fool deep neural networks.
+
+\bibitem[Papernot et~al., 2015]{papernot2015limitations}
+Papernot, N., McDaniel, P., Jha, S., Fredrikson, M., Celik, Z.~B., and Swami, A. (2015).
+\newblock The limitations of deep learning in adversarial settings.
+
+\bibitem[Rasouli et~al., 2020]{fedgan}
+Rasouli, M., Sun, T., and Rajagopal, R. (2020).
+\newblock Fedgan: Federated generative adversarial networks for distributed data.
+
+\bibitem[Salimans et~al., 2016]{is}
+Salimans, T., Goodfellow, I., Zaremba, W., Cheung, V., Radford, A., and Chen, X. (2016).
+\newblock Improved techniques for training gans.
+
+\bibitem[Su et~al., 2019]{Su_2019}
+Su, J., Vargas, D.~V., and Sakurai, K. (2019).
+\newblock One pixel attack for fooling deep neural networks.
+\newblock {\em IEEE Transactions on Evolutionary Computation}, 23(5):828–841.
+
+\bibitem[Szegedy et~al., 2014]{szegedy2014intriguing}
+Szegedy, C., Zaremba, W., Sutskever, I., Bruna, J., Erhan, D., Goodfellow, I., and Fergus, R. (2014).
+\newblock Intriguing properties of neural networks.
+
+\bibitem[Wang et~al., 2020]{wang2020sapag}
+Wang, Y., Deng, J., Guo, D., Wang, C., Meng, X., Liu, H., Ding, C., and Rajasekaran, S. (2020).
+\newblock Sapag: A self-adaptive privacy attack from gradients.
+
+\bibitem[Winter et~al., 2018]{Winter2018}
+Winter, R., Montanari, F., No{\'e}, F., and Clevert, D.-A. (2018).
+\newblock Learning continuous and data-driven molecular descriptors by translating equivalent chemical representations.
+\newblock {\em ChemRxiv}.
+\newblock This content is a preprint and has not been peer-reviewed.
+
+\bibitem[Xiao et~al., 2018]{xiao2018spatially}
+Xiao, C., Zhu, J.-Y., Li, B., He, W., Liu, M., and Song, D. (2018).
+\newblock Spatially transformed adversarial examples.
+
+\bibitem[Xu et~al., 2022]{9996844}
+Xu, J., Hong, C., Huang, J., Chen, L.~Y., and Decouchant, J. (2022).
+\newblock Agic: Approximate gradient inversion attack on federated learning.
+\newblock In {\em 2022 41st International Symposium on Reliable Distributed Systems (SRDS)}, pages 12--22.
+
+\end{thebibliography}

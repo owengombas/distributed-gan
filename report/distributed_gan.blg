@@ -1,0 +1,48 @@
+This is BibTeX, Version 0.99d (TeX Live 2025)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: distributed_gan.aux
+The style file: apalike.bst
+Database file #1: sections/references.bib
+Warning--empty journal in cifar
+You've used 26 entries,
+            1935 wiz_defined-function locations,
+            581 strings with 8396 characters,
+and the built_in function-call counts, 10023 in all, are:
+= -- 907
+> -- 693
+< -- 1
++ -- 250
+- -- 246
+* -- 892
+:= -- 1895
+add.period$ -- 62
+call.type$ -- 26
+change.case$ -- 252
+chr.to.int$ -- 26
+cite$ -- 27
+duplicate$ -- 312
+empty$ -- 500
+format.name$ -- 272
+if$ -- 1823
+int.to.chr$ -- 1
+int.to.str$ -- 0
+missing$ -- 10
+newline$ -- 116
+num.names$ -- 78
+pop$ -- 247
+preamble$ -- 1
+purify$ -- 253
+quote$ -- 0
+skip$ -- 231
+stack$ -- 0
+substring$ -- 390
+swap$ -- 15
+text.length$ -- 1
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 154
+warning$ -- 1
+while$ -- 56
+width$ -- 0
+write$ -- 285
+(There was 1 warning)
