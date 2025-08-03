@@ -1,0 +1,6 @@
+replicaCount: 2
+
+image:
+  repository: owengombas/dgan
+  pullPolicy: IfNotPresent
+  tag: latest

@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  node0:
+    image: dgan
+    environment:
+      - RANK=0
+      - MASTER_ADDR=node0
+    networks:
+      - gan-network
+
+  node1:
+    image: dgan
+    environment:
+      - RANK=1
+      - MASTER_ADDR=node0
+    networks:
+      - gan-network
+
+  node2:
+    image: dgan
+    environment:
+      - RANK=2
+      - MASTER_ADDR=node0
+    networks:
+      - gan-network
+
+networks:
+  gan-network:
+    driver: bridge

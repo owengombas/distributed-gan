@@ -1,6 +1,6 @@
 #!/bin/bash
+
 . ./shared-args.sh
-cd src
 
 seed=1
 

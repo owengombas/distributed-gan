@@ -12,6 +12,7 @@ from datasets.DataPartitioner import DataPartitioner
 from actors import worker, server
 import torch.multiprocessing as mp
 from typing import List, Callable
+import sys
 
 
 def _weights_init(m: nn.Module) -> None:
@@ -69,6 +70,7 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 def run(rank: int, args: argparse.Namespace, partioner: DataPartitioner, image_shape: Tuple[int, int, int], z_dim: int, generator: nn.Module, discriminator: nn.Module) -> None:
     # If the rank is greater than 0, we are a worker
+
     logging.info(f"Starting up process for node: {rank}")
     if rank > 0:
         # Initialize dataset with world size-1 because the server should not count as a worker
@@ -135,6 +137,16 @@ def init_process(local_rank: int, args: argparse.Namespace, ranks: List[int], pa
 
     partioner.rank = rank
 
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter(f"%(asctime)s | RANK {rank} | %(levelname)s | %(message)s")
+    handler.setFormatter(formatter)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.handlers = []  # Clear default handlers
+    root_logger.addHandler(handler)
+
+    logging.info(f"Starting rank {rank}.")
+
     seed_shifted = args.seed + rank
     np.random.seed(seed_shifted)
     random.seed(seed_shifted)
@@ -160,8 +172,11 @@ if __name__ == "__main__":
 
     logging.info(f"{len(ranks)} ranks: {', '.join([str(rank) for rank in ranks])}")
 
-    if args.world_size % 2 == 0:
-        raise ValueError("World size must be odd")
+    if args.world_size != 2:
+        if args.world_size % 2 == 0:
+            raise ValueError("World size must be odd")
+
+    logging.info(f"Starting mp.spawn with world_size={args.world_size}")
 
     # Dynamically import the dataset module
     dataset_module = importlib.import_module(f"datasets.{args.dataset}")

@@ -1,14 +1,14 @@
 #!/bin/bash
+
 . ./shared-args.sh
-cd src
 
 seed=3
-world_size=3
+world_size=$3
 backend=gloo
 swap_interval=5000
-master_addr=localhost
+master_addr=$2
 master_port=1234
-network_interface=en0
+network_interface=eth0
 
 python bootstrap.py \
     --backend $backend \

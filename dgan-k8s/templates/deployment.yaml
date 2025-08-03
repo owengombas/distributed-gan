@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "dgan-k8s.fullname" . }}
+spec:
+  serviceName: {{ include "dgan-k8s.fullname" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "dgan-k8s.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "dgan-k8s.name" . }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: RANK
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: WORLD_SIZE
+              value: "{{ .Values.replicaCount }}"
+            - name: MASTER_ADDR
+              value: {{ include "dgan-k8s.fullname" . }}-0.{{ include "dgan-k8s.fullname" . }}
+          command:
+            - bash
+            - -c
+            - |
+              RANK_NUM=${RANK##*-}
+              echo "Starting distributed worker $RANK_NUM / $WORLD_SIZE"
+              bash run-distributed.sh "$RANK_NUM" "$MASTER_ADDR" "$WORLD_SIZE"

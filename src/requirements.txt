@@ -1,0 +1,7 @@
+torch
+numpy
+datasets
+torchvision
+torchmetrics
+torch-fidelity
+tensordict

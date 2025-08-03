@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "dgan-k8s.fullname" . }}
+spec:
+  clusterIP: None  # Headless service
+  selector:
+    app: {{ include "dgan-k8s.name" . }}
+  ports:
+    - name: comm
+      port: 1234
+      targetPort: 1234
