@@ -29,7 +29,7 @@ provider "helm" {
 
 resource "helm_release" "dgan" {
   name       = "dgan"
-  chart      = "${path.module}/../dgan-k8s" # adjust path if needed
+  chart      = "${path.module}/../dgan-k8s"
   namespace  = "default"
   create_namespace = false
 
