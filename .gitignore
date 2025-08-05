@@ -9,3 +9,8 @@ _build
 *.zip
 src/results/weights
 src/weights
+.terraform
+*.lock.hcl
+*.lock.hcl
+*.tfstate*
+

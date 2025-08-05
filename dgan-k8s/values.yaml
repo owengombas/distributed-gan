@@ -1,6 +1,6 @@
-replicaCount: 2
+replicaCount: 3
 
 image:
   repository: owengombas/dgan
-  pullPolicy: IfNotPresent
-  tag: latest
+  pullPolicy: Always
+  tag: amd64

@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM python:slim
+FROM python:slim
 
 ENV RANKS=
 ENV MASTER_ADDR=
