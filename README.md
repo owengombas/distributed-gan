@@ -1,11 +1,10 @@
 # MD-GAN: Multi-Discriminator Generative Adversarial Networks for Distributed Datasets
-
 This repository provides a **PyTorch implementation of MD-GAN** (Multi-Discriminator Generative Adversarial Networks), designed for **real distributed systems** using Kubernetes, Docker, and Helm.
 
-## 📚 Overview
+## Overview
 **MD-GAN** enhances traditional GAN training by allowing multiple discriminators, each with access to a different local dataset, to train a shared generator without centralizing the data. This approach improves **scalability**, **performance**, and **data privacy**, especially in distributed or federated learning environments.
 
-## 🏗️ Architecture
+## Architecture
 
 ![MD-GAN Architecture](report/images/mdgan.png)
 
@@ -14,7 +13,7 @@ This repository provides a **PyTorch implementation of MD-GAN** (Multi-Discrimin
 - Gradients or loss signals are sent back to the generator
 - Data stays **local**, helping preserve privacy
 
-## ☁️ Kubernetes Architecture
+## Kubernetes Architecture
 This repo includes a **Kubernetes-native deployment** for MD-GAN using a Helm chart and StatefulSets.
 - A **StatefulSet** runs distributed PyTorch workers across pods
 - **Rank 0** pod acts as the **central coordinator**, training the global generator
