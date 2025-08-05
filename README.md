@@ -4,7 +4,10 @@ This repository provides a **PyTorch implementation of MD-GAN** (Multi-Discrimin
 ## Overview
 **MD-GAN** enhances traditional GAN training by allowing multiple discriminators, each with access to a different local dataset, to train a shared generator without centralizing the data. This approach improves **scalability**, **performance**, and **data privacy**, especially in distributed or federated learning environments.
 
-## Architecture
+## Traditional GAN architecture
+![GAN Architecture](report/images/gan.png)
+
+## MD-GAN Architecture
 ![MD-GAN Architecture](report/images/mdgan.png)
 
 - **Generator** is trained at node rank 0
@@ -41,7 +44,7 @@ This project includes a Terraform module to automatically provision your GKE Aut
 - ✅ Open-source, modular, and production-ready
 
 ## Results on CIFAR-10 after 30000 epochs
-![Results](report/images/generated_epoch_29999.png)
+![Results](report/images/CIFAR10.4.png)
 
 ## Credits
 ```
