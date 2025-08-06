@@ -36,7 +36,7 @@ This project includes a Terraform module to automatically provision your GKE Aut
 - Helm
 - Python 3.9+
 
-## Fetaures
+## Features
 - ✅ Fully distributed training via PyTorch’s native backend
 - ✅ Stateless Helm-based Kubernetes deployment
 - ✅ Privacy-preserving: real data never leaves local nodes
